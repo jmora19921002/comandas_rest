@@ -1,0 +1,333 @@
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Nueva Receta</h4>
+                </div>
+                <div class="card-body">
+                    <form id="formReceta">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="producto_id">Producto a Producir *</label>
+                                    <select class="form-control" id="producto_id" name="producto_id" required>
+                                        <option value="">Seleccione un producto...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="unidad_producida">Cantidad Producida *</label>
+                                    <input type="number" class="form-control" id="unidad_producida" name="unidad_producida" 
+                                           step="0.01" min="0" value="1" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        <h5>Ingredientes de la Receta</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="buscar_ingrediente">Buscar Ingrediente</label>
+                                    <input type="text" class="form-control" id="buscar_ingrediente" 
+                                           placeholder="Escriba para buscar...">
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label>Ingredientes Disponibles</label>
+                                    <select class="form-control" id="ingrediente_seleccion" size="5">
+                                        <option value="">Cargando ingredientes...</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="cantidad_ingrediente">Cantidad</label>
+                                    <input type="number" class="form-control" id="cantidad_ingrediente" 
+                                           step="0.01" min="0" value="1">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="unidad_ingrediente">Unidad</label>
+                                    <input type="text" class="form-control" id="unidad_ingrediente" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <button type="button" class="btn btn-success btn-block" id="btnAgregarIngrediente">
+                                        <i class="fas fa-plus"></i> Agregar Ingrediente
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <h6>Ingredientes Agregados</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-striped" id="tablaIngredientes">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                <th>Ingrediente</th>
+                                                <th>Cantidad</th>
+                                                <th>Unidad</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary" id="btnGuardar" disabled>
+                                    <i class="fas fa-save"></i> Guardar Receta
+                                </button>
+                                <a href="/manager/inventario/recetas" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Volver
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    let ingredientes = [];
+    let ingredientesReceta = [];
+    
+    // Cargar productos que pueden ser recetas
+    cargarProductosReceta();
+    
+    // Cargar ingredientes disponibles
+    cargarIngredientes();
+    
+    // Buscar ingredientes
+    $('#buscar_ingrediente').on('input', function() {
+        const busqueda = $(this).val();
+        filtrarIngredientes(busqueda);
+    });
+    
+    // Seleccionar ingrediente
+    $('#ingrediente_seleccion').on('change', function() {
+        const ingredienteId = $(this).val();
+        if (ingredienteId) {
+            const ingrediente = ingredientes.find(i => i.id == ingredienteId);
+            if (ingrediente) {
+                $('#unidad_ingrediente').val(ingrediente.unidad_medida);
+            }
+        }
+    });
+    
+    // Agregar ingrediente a la receta
+    $('#btnAgregarIngrediente').on('click', function() {
+        agregarIngrediente();
+    });
+    
+    // Manejo del formulario
+    $('#formReceta').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (ingredientesReceta.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Debe agregar al menos un ingrediente a la receta'
+            });
+            return;
+        }
+        
+        const formData = {
+            producto_id: parseInt($('#producto_id').val()),
+            unidad_producida: parseFloat($('#unidad_producida').val()),
+            ingredientes: ingredientesReceta
+        };
+        
+        $.ajax({
+            url: '/api/inventario/recetas',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Éxito',
+                        text: response.message,
+                        showConfirmButton: false,
+                        timer: 1500
+                    }).then(() => {
+                        window.location.href = '/manager/inventario/recetas';
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: response.message
+                    });
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: response ? response.message : 'Error al procesar la solicitud'
+                });
+            }
+        });
+    });
+    
+    function cargarProductosReceta() {
+        $.ajax({
+            url: '/api/inventario/productos/receta',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const select = $('#producto_id');
+                    select.empty();
+                    select.append('<option value="">Seleccione un producto...</option>');
+                    
+                    response.productos.forEach(function(producto) {
+                        select.append(`<option value="${producto.id}">${producto.nombre}</option>`);
+                    });
+                }
+            }
+        });
+    }
+    
+    function cargarIngredientes() {
+        $.ajax({
+            url: '/api/inventario/productos/buscar',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    ingredientes = response.productos;
+                    actualizarListaIngredientes();
+                }
+            }
+        });
+    }
+    
+    function filtrarIngredientes(busqueda) {
+        $.ajax({
+            url: '/api/inventario/productos/buscar',
+            method: 'GET',
+            data: { busqueda: busqueda },
+            success: function(response) {
+                if (response.success) {
+                    ingredientes = response.productos;
+                    actualizarListaIngredientes();
+                }
+            }
+        });
+    }
+    
+    function actualizarListaIngredientes() {
+        const select = $('#ingrediente_seleccion');
+        select.empty();
+        
+        ingredientes.forEach(function(ingrediente) {
+            select.append(`<option value="${ingrediente.id}">${ingrediente.nombre} (${ingrediente.unidad_medida})</option>`);
+        });
+    }
+    
+    function agregarIngrediente() {
+        const ingredienteId = $('#ingrediente_seleccion').val();
+        const cantidad = parseFloat($('#cantidad_ingrediente').val()) || 0;
+        
+        if (!ingredienteId) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Debe seleccionar un ingrediente'
+            });
+            return;
+        }
+        
+        if (cantidad <= 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'La cantidad debe ser mayor a 0'
+            });
+            return;
+        }
+        
+        // Verificar que no se agregue el mismo ingrediente dos veces
+        if (ingredientesReceta.some(item => item.producto_id == ingredienteId)) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Este ingrediente ya está en la receta'
+            });
+            return;
+        }
+        
+        const ingrediente = ingredientes.find(i => i.id == ingredienteId);
+        
+        const item = {
+            producto_id: parseInt(ingredienteId),
+            cantidad: cantidad
+        };
+        
+        ingredientesReceta.push(item);
+        actualizarTablaIngredientes();
+        limpiarCamposIngrediente();
+        $('#btnGuardar').prop('disabled', false);
+    }
+    
+    function actualizarTablaIngredientes() {
+        const tbody = $('#tablaIngredientes tbody');
+        tbody.empty();
+        
+        ingredientesReceta.forEach(function(item, index) {
+            const ingrediente = ingredientes.find(i => i.id == item.producto_id);
+            const row = `
+                <tr>
+                    <td>${ingrediente ? ingrediente.nombre : 'Ingrediente no encontrado'}</td>
+                    <td>${item.cantidad}</td>
+                    <td>${ingrediente ? ingrediente.unidad_medida : ''}</td>
+                    <td>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="eliminarIngrediente(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+            tbody.append(row);
+        });
+    }
+    
+    function eliminarIngrediente(index) {
+        ingredientesReceta.splice(index, 1);
+        actualizarTablaIngredientes();
+        $('#btnGuardar').prop('disabled', ingredientesReceta.length === 0);
+    }
+    
+    function limpiarCamposIngrediente() {
+        $('#ingrediente_seleccion').val('');
+        $('#cantidad_ingrediente').val('1');
+        $('#unidad_ingrediente').val('');
+    }
+    
+    // Hacer la función eliminarIngrediente global
+    window.eliminarIngrediente = eliminarIngrediente;
+});
+</script> 

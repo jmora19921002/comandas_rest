@@ -1,0 +1,283 @@
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="card-title mb-0">
+                        <i class="fas fa-box"></i> 
+                        {% if producto %}Editar Producto{% else %}Nuevo Producto{% endif %}
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    <form id="formProducto">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="nombre" class="form-label fw-bold">Nombre del Producto *</label>
+                                    <input type="text" class="form-control form-control-lg" id="nombre" name="nombre" 
+                                           value="{{ producto.nombre if producto else '' }}" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="unidad_medida" class="form-label fw-bold">Unidad de Medida *</label>
+                                    <select class="form-control form-control-lg" id="unidad_medida" name="unidad_medida" required>
+                                        <option value="">Seleccione...</option>
+                                        <option value="kg" {% if producto and producto.unidad_medida == 'kg' %}selected{% endif %}>Kilogramos (kg)</option>
+                                        <option value="g" {% if producto and producto.unidad_medida == 'g' %}selected{% endif %}>Gramos (g)</option>
+                                        <option value="l" {% if producto and producto.unidad_medida == 'l' %}selected{% endif %}>Litros (l)</option>
+                                        <option value="ml" {% if producto and producto.unidad_medida == 'ml' %}selected{% endif %}>Mililitros (ml)</option>
+                                        <option value="unidad" {% if producto and producto.unidad_medida == 'unidad' %}selected{% endif %}>Unidad</option>
+                                        <option value="docena" {% if producto and producto.unidad_medida == 'docena' %}selected{% endif %}>Docena</option>
+                                        <option value="caja" {% if producto and producto.unidad_medida == 'caja' %}selected{% endif %}>Caja</option>
+                                        <option value="paquete" {% if producto and producto.unidad_medida == 'paquete' %}selected{% endif %}>Paquete</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="cantidad_disponible" class="form-label fw-bold">Cantidad Disponible *</label>
+                                    <input type="number" class="form-control form-control-lg" id="cantidad_disponible" name="cantidad_disponible" 
+                                           step="0.01" min="0" value="{{ producto.cantidad_disponible if producto else '0' }}" required>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="costo" class="form-label fw-bold">Costo Unitario *</label>
+                                    <div class="input-group input-group-lg">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="costo" name="costo" 
+                                               step="0.01" min="0" value="{{ producto.costo if producto else '0' }}" required>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="ganancia" class="form-label fw-bold">Ganancia (%) *</label>
+                                    <div class="input-group input-group-lg">
+                                        <input type="number" class="form-control" id="ganancia" name="ganancia" 
+                                               step="0.01" min="0" max="100" value="{{ producto.ganancia if producto else '0' }}" required>
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="precio_venta" class="form-label fw-bold">Precio de Venta *</label>
+                                    <div class="input-group input-group-lg">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="precio_venta" name="precio_venta" 
+                                               step="0.01" min="0" value="{{ producto.precio_venta if producto else '0' }}" required readonly>
+                                    </div>
+                                    <small class="form-text text-muted">Calculado automáticamente</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="es_receta" class="form-label fw-bold">¿Es Receta?</label>
+                                    <select class="form-control form-control-lg" id="es_receta" name="es_receta">
+                                        <option value="no" {% if producto and producto.es_receta == 'no' %}selected{% endif %}>No</option>
+                                        <option value="si" {% if producto and producto.es_receta == 'si' %}selected{% endif %}>Sí</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="estatus" class="form-label fw-bold">Estatus</label>
+                                    <select class="form-control form-control-lg" id="estatus" name="estatus">
+                                        <option value="activo" {% if producto and producto.estatus == 'activo' %}selected{% endif %}>Activo</option>
+                                        <option value="inactivo" {% if producto and producto.estatus == 'inactivo' %}selected{% endif %}>Inactivo</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-12 text-center">
+                                <button type="submit" class="btn btn-primary btn-lg me-3">
+                                    <i class="fas fa-save"></i> 
+                                    {% if producto %}Actualizar{% else %}Guardar{% endif %}
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-lg" onclick="volverAProductos()">
+                                    <i class="fas fa-arrow-left"></i> Volver
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    console.log('Formulario de productos cargado');
+    
+    // Limpiar formulario cuando se cierre el modal
+    $('#formModal').on('hidden.bs.modal', function () {
+        $('#formProducto')[0].reset();
+        $('#precio_venta').val('0.00');
+    });
+    
+    // Calcular precio de venta automáticamente
+    function calcularPrecioVenta() {
+        const costo = parseFloat($('#costo').val()) || 0;
+        const ganancia = parseFloat($('#ganancia').val()) || 0;
+        
+        console.log('Calculando precio:', { costo, ganancia });
+        
+        if (costo > 0 && ganancia >= 0) {
+            const precioVenta = costo * (1 + ganancia / 100);
+            $('#precio_venta').val(precioVenta.toFixed(2));
+            console.log('Precio calculado:', precioVenta.toFixed(2));
+        } else {
+            $('#precio_venta').val('0.00');
+        }
+    }
+    
+    // Eventos para cálculos automáticos
+    $('#costo, #ganancia').on('input', function() {
+        console.log('Campo modificado:', this.id, 'valor:', this.value);
+        calcularPrecioVenta();
+    });
+    
+    // Calcular precio inicial al cargar la página
+    calcularPrecioVenta();
+    
+    // Manejo del formulario
+    $('#formProducto').on('submit', function(e) {
+        e.preventDefault();
+        console.log('Formulario enviado');
+        
+        // Validar campos requeridos
+        const nombre = $('#nombre').val().trim();
+        const unidadMedida = $('#unidad_medida').val();
+        const cantidad = parseFloat($('#cantidad_disponible').val());
+        const costo = parseFloat($('#costo').val());
+        const ganancia = parseFloat($('#ganancia').val());
+        const precioVenta = parseFloat($('#precio_venta').val());
+        
+        console.log('Datos del formulario:', {
+            nombre, unidadMedida, cantidad, costo, ganancia, precioVenta
+        });
+        
+        if (!nombre) {
+            alert('El nombre del producto es requerido');
+            return;
+        }
+        
+        if (!unidadMedida) {
+            alert('Debe seleccionar una unidad de medida');
+            return;
+        }
+        
+        if (cantidad < 0) {
+            alert('La cantidad no puede ser negativa');
+            return;
+        }
+        
+        if (costo < 0) {
+            alert('El costo no puede ser negativo');
+            return;
+        }
+        
+        if (ganancia < 0) {
+            alert('La ganancia no puede ser negativa');
+            return;
+        }
+        
+        const formData = {
+            nombre: nombre,
+            unidad_medida: unidadMedida,
+            cantidad_disponible: cantidad,
+            costo: costo,
+            ganancia: ganancia,
+            precio_venta: precioVenta,
+            es_receta: $('#es_receta').val(),
+            estatus: $('#estatus').val()
+        };
+        
+        console.log('Datos a enviar:', formData);
+        
+        const url = '{{ "/api/inventario/productos/" + producto.id|string if producto else "/api/inventario/productos" }}';
+        const method = '{{ "PUT" if producto else "POST" }}';
+        
+        console.log('URL:', url, 'Method:', method);
+        
+        // Usar fetch en lugar de $.ajax para mayor compatibilidad
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Respuesta exitosa:', data);
+            if (data.success) {
+                // Limpiar el formulario
+                $('#formProducto')[0].reset();
+                $('#precio_venta').val('0.00');
+                
+                // Mostrar mensaje de éxito con SweetAlert
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Éxito!',
+                    text: 'Producto guardado correctamente',
+                    showConfirmButton: false,
+                    timer: 1500
+                }).then(() => {
+                    volverAProductos();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error en fetch:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Error al guardar el producto: ' + error.message
+            });
+        });
+    });
+});
+
+// Función para volver a la lista de productos
+function volverAProductos() {
+    console.log('Volviendo a productos');
+    
+    // Limpiar el formulario
+    $('#formProducto')[0].reset();
+    $('#precio_venta').val('0.00');
+    
+    // Verificar si estamos en el contexto del manager
+    const contenidoSeccion = document.getElementById('contenido-seccion');
+    if (contenidoSeccion && typeof cargarSeccion === 'function') {
+        // Estamos en el manager, cerrar modal y recargar sección
+        console.log('Cerrando modal y recargando productos');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('formModal'));
+        if (modal) {
+            modal.hide();
+        }
+        cargarSeccion('inventario/productos');
+    } else {
+        // Estamos en una página independiente, redirigir
+        console.log('Redirigiendo a manager');
+        window.location.href = '/manager/inventario/productos';
+    }
+}
+</script> 

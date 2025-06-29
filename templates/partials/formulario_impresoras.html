@@ -1,0 +1,119 @@
+<form id="formulario-impresora" class="needs-validation" novalidate>
+    <input type="hidden" id="impresora-id" name="id">
+    
+    <div class="mb-3">
+        <label for="nombre" class="form-label">Nombre de la Impresora</label>
+        <input type="text" class="form-control" id="nombre" name="nombre" required>
+        <div class="invalid-feedback">
+            Por favor ingrese el nombre de la impresora
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label for="impresora_windows" class="form-label">Impresora Windows</label>
+        <select class="form-select" id="impresora_windows" name="impresora_windows" required>
+            <option value="">Seleccione una impresora...</option>
+            {% for printer in impresoras_windows %}
+            <option value="{{ printer.name }}" data-port="{{ printer.port }}">
+                {{ printer.name }}
+            </option>
+            {% endfor %}
+        </select>
+        <div class="invalid-feedback">
+            Por favor seleccione una impresora
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label for="ip" class="form-label">Dirección IP (Opcional - Solo para impresoras de red)</label>
+        <input type="text" class="form-control" id="ip" name="ip" 
+               pattern="^(\d{1,3}\.){3}\d{1,3}$">
+        <div class="invalid-feedback">
+            Por favor ingrese una dirección IP válida (ejemplo: 192.168.1.100)
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label for="puerto" class="form-label">Puerto (Opcional - Solo para impresoras de red)</label>
+        <input type="number" class="form-control" id="puerto" name="puerto" 
+               min="1" max="65535">
+        <div class="invalid-feedback">
+            Por favor ingrese un puerto válido (1-65535)
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label class="form-label">Grupos Asignados</label>
+        <div class="grupos-container">
+            {% for grupo in grupos %}
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" 
+                       name="grupos" value="{{ grupo.id }}" 
+                       id="grupo{{ grupo.id }}">
+                <label class="form-check-label" for="grupo{{ grupo.id }}">
+                    {{ grupo.nombre }}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <label for="estatus" class="form-label">Estatus</label>
+        <select class="form-select" id="estatus" name="estatus" required>
+            <option value="activa">Activa</option>
+            <option value="inactiva">Inactiva</option>
+        </select>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formulario-impresora');
+    const impresoraWindows = document.getElementById('impresora_windows');
+    const ipInput = document.getElementById('ip');
+    const puertoInput = document.getElementById('puerto');
+    
+    // Validación del formulario
+    form.addEventListener('submit', function(event) {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+    });
+    
+    // Validación de IP en tiempo real
+    ipInput.addEventListener('input', function() {
+        if (this.value) {
+            const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (ipPattern.test(this.value)) {
+                const octets = this.value.split('.');
+                const isValid = octets.every(octet => {
+                    const num = parseInt(octet);
+                    return num >= 0 && num <= 255;
+                });
+                this.setCustomValidity(isValid ? '' : 'Dirección IP inválida');
+            } else {
+                this.setCustomValidity('Formato de IP inválido');
+            }
+        } else {
+            this.setCustomValidity('');
+        }
+    });
+    
+    // Actualizar campos IP y puerto cuando se selecciona una impresora
+    impresoraWindows.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        if (selectedOption.value) {
+            // Si la impresora tiene un puerto configurado, intentar extraer IP y puerto
+            const port = selectedOption.dataset.port;
+            if (port && port.includes(':')) {
+                const [ip, puerto] = port.split(':');
+                ipInput.value = ip;
+                puertoInput.value = puerto;
+            }
+        }
+    });
+});
+</script> 

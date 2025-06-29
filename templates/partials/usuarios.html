@@ -1,0 +1,45 @@
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5>Gestor de Usuarios</h5>
+        <button class="btn btn-primary btn-sm btn-agregar" data-tipo="usuarios">
+            <i class="bi bi-plus"></i> Nuevo Usuario
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuario</th>
+                        <th>Nombre Completo</th>
+                        <th>Estatus</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="usuarios-table-body">
+                    {% for usuario in usuarios %}
+                    <tr>
+                        <td>{{ usuario.id }}</td>
+                        <td>{{ usuario.user }}</td>
+                        <td>{{ usuario.nombre_completo }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if usuario.estatus == 'activo' else 'secondary' }}">
+                                {{ usuario.estatus }}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-warning btn-sm btn-editar" data-tipo="usuarios" data-id="{{ usuario.id }}">
+                                <i class="bi bi-pencil"></i> Editar
+                            </button>
+                            <button class="btn btn-danger btn-sm btn-eliminar" data-tipo="usuarios" data-id="{{ usuario.id }}">
+                                <i class="bi bi-trash"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

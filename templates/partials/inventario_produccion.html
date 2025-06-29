@@ -1,0 +1,477 @@
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-industry"></i> Gestión de Producción - Inventario
+                    </h4>
+                    <button type="button" class="btn btn-primary" onclick="cargarFormularioProduccion()">
+                        <i class="fas fa-plus"></i> Nueva Producción
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover" id="tablaProducciones">
+                            <thead class="thead-dark">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Concepto</th>
+                                    <th>Fecha</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for produccion in producciones %}
+                                <tr>
+                                    <td>{{ produccion.id }}</td>
+                                    <td>{{ produccion.concepto }}</td>
+                                    <td>{{ produccion.fecha }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info" onclick="verDetallesProduccion({{ produccion.id }})">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" onclick="editarProduccion({{ produccion.id }})">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" onclick="eliminarProduccion({{ produccion.id }})">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Producción -->
+<div class="modal fade" id="modalProduccion" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalProduccionTitulo">Nueva Producción</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="formProduccion">
+                    <input type="hidden" id="produccionId" name="id">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="concepto">Concepto *</label>
+                                <input type="text" class="form-control" id="concepto" name="concepto" 
+                                       placeholder="ej: Producción semanal de pan" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="fechaProduccion">Fecha de Producción *</label>
+                                <input type="date" class="form-control" id="fechaProduccion" name="fecha" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    <h6>Recetas a Producir</h6>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="buscarReceta">Buscar Receta</label>
+                                <input type="text" class="form-control" id="buscarReceta" 
+                                       placeholder="Escriba para buscar...">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn btn-secondary btn-block" onclick="buscarRecetas()">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Recetas Disponibles</h6>
+                            <div class="table-responsive" style="max-height: 200px;">
+                                <table class="table table-sm table-hover" id="tablaRecetasDisponibles">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Nombre</th>
+                                            <th>Unidad</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Recetas de la Producción</h6>
+                            <div class="table-responsive" style="max-height: 200px;">
+                                <table class="table table-sm table-hover" id="tablaRecetasProduccion">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>Receta</th>
+                                            <th>Unidad</th>
+                                            <th>Cantidad</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="cantidadReceta">Cantidad a Producir</label>
+                                <input type="number" class="form-control" id="cantidadReceta" 
+                                       step="0.01" min="0.01" value="1">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn btn-success btn-block" onclick="agregarReceta()">
+                                    <i class="fas fa-plus"></i> Agregar Receta
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarProduccion()">Guardar Producción</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Ver Producción -->
+<div class="modal fade" id="modalVerProduccion" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detalle de Producción</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="detalleProduccionContent">
+                    <!-- El contenido se cargará dinámicamente -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let recetasProduccion = [];
+let recetaSeleccionada = null;
+let produccionEditando = null;
+
+function abrirModalProduccion(produccion = null) {
+    produccionEditando = produccion;
+    recetasProduccion = [];
+    recetaSeleccionada = null;
+    
+    const modal = $('#modalProduccion');
+    const titulo = modal.find('#modalProduccionTitulo');
+    const form = $('#formProduccion');
+    
+    if (produccion) {
+        titulo.text('Editar Producción');
+        cargarProduccionParaEditar(produccion);
+    } else {
+        titulo.text('Nueva Producción');
+        form[0].reset();
+        form.find('#produccionId').val('');
+        $('#fechaProduccion').val(new Date().toISOString().split('T')[0]);
+    }
+    
+    buscarRecetas();
+    actualizarTablaRecetasProduccion();
+    modal.modal('show');
+}
+
+function cargarProduccionParaEditar(produccion) {
+    fetch(`/api/inventario/produccion/${produccion.id}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            $('#produccionId').val(data.produccion.id);
+            $('#concepto').val(data.produccion.concepto);
+            $('#fechaProduccion').val(data.produccion.fecha);
+            
+            recetasProduccion = data.detalles.map(det => ({
+                receta_id: det.receta_id,
+                nombre: det.producto_nombre,
+                unidad_producida: det.unidad_producida,
+                cantidad: det.cantidad
+            }));
+            
+            actualizarTablaRecetasProduccion();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+function buscarRecetas() {
+    const busqueda = $('#buscarReceta').val();
+    
+    fetch(`/api/inventario/recetas/disponibles?busqueda=${encodeURIComponent(busqueda)}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            mostrarRecetasDisponibles(data.recetas);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+function mostrarRecetasDisponibles(recetas) {
+    const tbody = $('#tablaRecetasDisponibles tbody');
+    tbody.empty();
+    
+    recetas.forEach(receta => {
+        const row = `
+            <tr>
+                <td>${receta.id}</td>
+                <td>${receta.nombre}</td>
+                <td>${receta.unidad_producida}</td>
+                <td>
+                    <button class="btn btn-sm btn-success" onclick="seleccionarReceta(${JSON.stringify(receta).replace(/"/g, '&quot;')})">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+function seleccionarReceta(receta) {
+    recetaSeleccionada = receta;
+}
+
+function agregarReceta() {
+    if (!recetaSeleccionada) {
+        alert('Seleccione una receta primero');
+        return;
+    }
+    
+    const cantidad = parseFloat($('#cantidadReceta').val());
+    
+    if (cantidad <= 0) {
+        alert('La cantidad debe ser mayor a 0');
+        return;
+    }
+    
+    const receta = {
+        receta_id: recetaSeleccionada.id,
+        nombre: recetaSeleccionada.nombre,
+        unidad_producida: recetaSeleccionada.unidad_producida,
+        cantidad: cantidad
+    };
+    
+    recetasProduccion.push(receta);
+    actualizarTablaRecetasProduccion();
+    
+    // Limpiar campos
+    $('#cantidadReceta').val(1);
+    recetaSeleccionada = null;
+}
+
+function eliminarReceta(index) {
+    recetasProduccion.splice(index, 1);
+    actualizarTablaRecetasProduccion();
+}
+
+function actualizarTablaRecetasProduccion() {
+    const tbody = $('#tablaRecetasProduccion tbody');
+    tbody.empty();
+    
+    recetasProduccion.forEach((receta, index) => {
+        const row = `
+            <tr>
+                <td>${receta.nombre}</td>
+                <td>${receta.unidad_producida}</td>
+                <td>${receta.cantidad}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarReceta(${index})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(row);
+    });
+}
+
+function guardarProduccion() {
+    const concepto = $('#concepto').val();
+    const fecha = $('#fechaProduccion').val();
+    
+    if (!concepto || !fecha) {
+        alert('Complete todos los campos requeridos');
+        return;
+    }
+    
+    if (recetasProduccion.length === 0) {
+        alert('Agregue al menos una receta a la producción');
+        return;
+    }
+    
+    const produccionData = {
+        concepto: concepto,
+        fecha: fecha,
+        recetas: recetasProduccion
+    };
+    
+    const url = produccionEditando ? 
+        `/api/inventario/produccion/${produccionEditando.id}` : 
+        '/api/inventario/produccion';
+    const method = produccionEditando ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(produccionData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            $('#modalProduccion').modal('hide');
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al guardar la producción');
+    });
+}
+
+function verDetallesProduccion(produccionId) {
+    $.ajax({
+        url: `/api/inventario/produccion/${produccionId}`,
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                let detallesHtml = '';
+                response.detalles.forEach(function(detalle) {
+                    detallesHtml += `<li>${detalle.producto_nombre} - ${detalle.cantidad} unidades</li>`;
+                });
+                
+                Swal.fire({
+                    title: `Producción: ${response.produccion.concepto}`,
+                    html: `
+                        <p><strong>Fecha:</strong> ${response.produccion.fecha}</p>
+                        <p><strong>Recetas Producidas:</strong></p>
+                        <ul>${detallesHtml}</ul>
+                    `,
+                    icon: 'info'
+                });
+            } else {
+                Swal.fire('Error', response.message, 'error');
+            }
+        },
+        error: function() {
+            Swal.fire('Error', 'Error al cargar los detalles de la producción', 'error');
+        }
+    });
+}
+
+function editarProduccion(produccionId) {
+    // Implementar edición
+    Swal.fire({
+        title: 'Función en Desarrollo',
+        text: 'La función de editar producción estará disponible próximamente',
+        icon: 'info'
+    });
+}
+
+function eliminarProduccion(produccionId) {
+    Swal.fire({
+        title: '¿Está seguro?',
+        text: "Esta acción no se puede deshacer",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: `/api/inventario/produccion/${produccionId}`,
+                method: 'DELETE',
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire(
+                            'Eliminado',
+                            response.message,
+                            'success'
+                        ).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire(
+                            'Error',
+                            response.message,
+                            'error'
+                        );
+                    }
+                },
+                error: function(xhr) {
+                    const response = xhr.responseJSON;
+                    Swal.fire(
+                        'Error',
+                        response ? response.message : 'Error al eliminar la producción',
+                        'error'
+                    );
+                }
+            });
+        }
+    });
+}
+
+// Inicializar DataTable
+$(document).ready(function() {
+    $('#tablaProducciones').DataTable({
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+        },
+        order: [[2, 'desc']]
+    });
+});
+</script> 

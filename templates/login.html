@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Comandas - Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .logo-container {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .logo-container img {
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 1rem;
+        }
+        .login-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+        }
+        .login-body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            background: #f8f9fa;
+        }
+        .company-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+    </style>
+</head>
+<body class="login-body">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="login-card shadow">
+                    <div class="logo-container">
+                        {% if empresa and empresa.logo %}
+                            <img src="{{ url_for('obtener_logo_empresa_publico') }}" alt="Logo" class="img-fluid">
+                            {% if empresa.nombre_empresa %}
+                                <div class="company-name">{{ empresa.nombre_empresa }}</div>
+                            {% endif %}
+                        {% else %}
+                            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="img-fluid">
+                        {% endif %}
+                    </div>
+                    <h2 class="text-center mb-4">Inicio de Sesión</h2>
+                    
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    
+                    <form method="POST" action="{{ url_for('login') }}">
+                        <div class="mb-3">
+                            <label for="user" class="form-label">Usuario</label>
+                            <input type="text" class="form-control" id="user" name="user" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Contraseña</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Iniciar Sesión</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Configuración de la Empresa</h4>
+                </div>
+                <div class="card-body">
+                    <form id="empresaForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="nombre_empresa" class="form-label">Nombre de la Empresa</label>
+                            <input type="text" class="form-control" id="nombre_empresa" name="nombre_empresa" 
+                                   value="{{ empresa.nombre_empresa if empresa else '' }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="rif" class="form-label">RIF</label>
+                            <input type="text" class="form-control" id="rif" name="rif" 
+                                   value="{{ empresa.rif if empresa else '' }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="direccion" class="form-label">Dirección</label>
+                            <textarea class="form-control" id="direccion" name="direccion" rows="3" required>{{ empresa.direccion if empresa else '' }}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="logo" class="form-label">Logo de la Empresa</label>
+                            {% if empresa and empresa.logo %}
+                            <div class="mb-2">
+                                <img src="{{ url_for('obtener_logo_empresa') }}" alt="Logo actual" class="img-thumbnail" style="max-height: 100px;">
+                            </div>
+                            {% endif %}
+                            <input type="file" class="form-control" id="logo" name="logo" accept="image/*">
+                            <small class="form-text text-muted">Deja vacío para mantener el logo actual</small>
+                        </div>
+
+                        <hr class="my-4">
+                        <h5 class="mb-3">Configuración de WhatsApp</h5>
+                        
+                        <div class="mb-3">
+                            <label for="whatsapp_api_key" class="form-label">API Key de WhatsApp</label>
+                            <input type="text" class="form-control" id="whatsapp_api_key" name="whatsapp_api_key" 
+                                   value="{{ empresa.whatsapp_api_key if empresa else '' }}">
+                            <small class="form-text text-muted">Clave de API para la integración con WhatsApp</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="whatsapp_api_url" class="form-label">URL de la API de WhatsApp</label>
+                            <input type="url" class="form-control" id="whatsapp_api_url" name="whatsapp_api_url" 
+                                   value="{{ empresa.whatsapp_api_url if empresa else '' }}">
+                            <small class="form-text text-muted">URL del endpoint de la API de WhatsApp</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="whatsapp_phone_number" class="form-label">Número de WhatsApp</label>
+                            <input type="text" class="form-control" id="whatsapp_phone_number" name="whatsapp_phone_number" 
+                                   value="{{ empresa.whatsapp_phone_number if empresa else '' }}">
+                            <small class="form-text text-muted">Número de teléfono de WhatsApp (incluir código de país, ej: +584141234567)</small>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Empresa form script loaded'); // Debug
+    
+    const form = document.getElementById('empresaForm');
+    if (!form) {
+        console.error('No se encontró el formulario de empresa');
+        return;
+    }
+    
+    // Función para mostrar información del archivo seleccionado
+    function mostrarInfoArchivo(input) {
+        const file = input.files[0];
+        if (file) {
+            console.log('Archivo seleccionado:', file.name);
+            console.log('Tamaño:', file.size, 'bytes');
+            console.log('Tipo:', file.type);
+            
+            // Mostrar información del archivo
+            const infoDiv = document.getElementById('file-info') || createFileInfoDiv();
+            infoDiv.innerHTML = `
+                <div class="alert alert-info mt-2">
+                    <strong>Archivo seleccionado:</strong> ${file.name}<br>
+                    <strong>Tamaño:</strong> ${(file.size / 1024).toFixed(2)} KB<br>
+                    <strong>Tipo:</strong> ${file.type}
+                </div>
+            `;
+        }
+    }
+    
+    // Función para crear el div de información del archivo
+    function createFileInfoDiv() {
+        const infoDiv = document.createElement('div');
+        infoDiv.id = 'file-info';
+        const logoInput = document.getElementById('logo');
+        logoInput.parentNode.appendChild(infoDiv);
+        return infoDiv;
+    }
+    
+    // Agregar evento para mostrar información del archivo
+    const logoInput = document.getElementById('logo');
+    if (logoInput) {
+        logoInput.addEventListener('change', function() {
+            mostrarInfoArchivo(this);
+        });
+    }
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        console.log('Formulario enviado'); // Debug
+        
+        const formData = new FormData(this);
+        
+        // Debug: mostrar los datos que se van a enviar
+        console.log('Datos a enviar:');
+        for (let [key, value] of formData.entries()) {
+            if (key === 'logo') {
+                console.log(`${key}: [Archivo] ${value.name} (${value.size} bytes)`);
+            } else {
+                console.log(`${key}: ${value}`);
+            }
+        }
+        
+        // Mostrar indicador de carga
+        Swal.fire({
+            title: 'Guardando...',
+            text: 'Por favor espere',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
+        fetch('/api/empresa', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            console.log('Respuesta del servidor:', response); // Debug
+            console.log('Status:', response.status); // Debug
+            return response.json();
+        })
+        .then(data => {
+            console.log('Datos recibidos:', data); // Debug
+            Swal.close();
+            
+            if (data.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Éxito',
+                    text: data.message,
+                    showConfirmButton: true
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Swal.close();
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Ocurrió un error al procesar la solicitud: ' + error.message
+            });
+        });
+    });
+});
+</script>
+{% endblock %} 

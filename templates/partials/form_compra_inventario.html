@@ -1,0 +1,416 @@
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="card-title mb-0">
+                        <i class="fas fa-shopping-cart"></i> Nueva Compra
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    <form id="formCompra">
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="proveedor" class="form-label fw-bold">Proveedor *</label>
+                                    <input type="text" class="form-control form-control-lg" id="proveedor" name="proveedor" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fecha" class="form-label fw-bold">Fecha de Compra *</label>
+                                    <input type="date" class="form-control form-control-lg" id="fecha" name="fecha" 
+                                           value="{{ today }}" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
+                        <h5 class="text-primary mb-3">
+                            <i class="fas fa-boxes"></i> Productos de la Compra
+                        </h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="buscar_producto" class="form-label fw-bold">Buscar Producto</label>
+                                    <input type="text" class="form-control form-control-lg" id="buscar_producto" 
+                                           placeholder="Escriba para buscar...">
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label class="form-label fw-bold">Productos Disponibles</label>
+                                    <select class="form-control form-control-lg" id="producto_seleccion" size="5">
+                                        <option value="">Cargando productos...</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="cantidad" class="form-label fw-bold">Cantidad</label>
+                                    <input type="number" class="form-control form-control-lg" id="cantidad" 
+                                           step="0.01" min="0" value="1">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="precio_unitario" class="form-label fw-bold">Precio Unitario</label>
+                                    <div class="input-group input-group-lg">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="precio_unitario" 
+                                               step="0.01" min="0" value="0">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="total_item" class="form-label fw-bold">Total</label>
+                                    <div class="input-group input-group-lg">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="total_item" 
+                                               readonly value="0">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button type="button" class="btn btn-success btn-lg w-100" id="btnAgregar">
+                                        <i class="fas fa-plus"></i> Agregar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-primary mb-3">
+                                    <i class="fas fa-list"></i> Productos Agregados
+                                </h6>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-striped" id="tablaItems">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                <th>Producto</th>
+                                                <th>Cantidad</th>
+                                                <th>Precio Unit.</th>
+                                                <th>Total</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="table-info">
+                                                <td colspan="3" class="text-end"><strong>Total General:</strong></td>
+                                                <td><strong id="totalGeneral">$0.00</strong></td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-12 text-center">
+                                <button type="submit" class="btn btn-primary btn-lg me-3" id="btnGuardar" disabled>
+                                    <i class="fas fa-save"></i> Guardar Compra
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-lg" onclick="volverACompras()">
+                                    <i class="fas fa-arrow-left"></i> Volver
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    console.log('Formulario de compras cargado');
+    
+    // Limpiar formulario cuando se cierre el modal
+    $('#formModal').on('hidden.bs.modal', function () {
+        limpiarFormularioCompleto();
+    });
+    
+    let productos = [];
+    let itemsCompra = [];
+    
+    // Cargar productos al iniciar
+    cargarProductos();
+    
+    // Buscar productos
+    $('#buscar_producto').on('input', function() {
+        const busqueda = $(this).val();
+        filtrarProductos(busqueda);
+    });
+    
+    // Calcular total del item
+    $('#cantidad, #precio_unitario').on('input', function() {
+        calcularTotalItem();
+    });
+    
+    // Agregar producto a la compra
+    $('#btnAgregar').on('click', function() {
+        agregarProducto();
+    });
+    
+    // Seleccionar producto de la lista
+    $('#producto_seleccion').on('change', function() {
+        const productoId = $(this).val();
+        if (productoId) {
+            const producto = productos.find(p => p.id == productoId);
+            if (producto) {
+                $('#precio_unitario').val(producto.costo || 0);
+                calcularTotalItem();
+            }
+        }
+    });
+    
+    // Manejo del formulario
+    $('#formCompra').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (itemsCompra.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Debe agregar al menos un producto a la compra'
+            });
+            return;
+        }
+        
+        const formData = {
+            proveedor: $('#proveedor').val(),
+            fecha: $('#fecha').val(),
+            items: itemsCompra
+        };
+        
+        // Usar fetch en lugar de $.ajax para mayor compatibilidad
+        fetch('/api/inventario/compras', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Respuesta exitosa:', data);
+            if (data.success) {
+                // Limpiar el formulario
+                limpiarFormularioCompleto();
+                
+                // Mostrar mensaje de éxito con SweetAlert
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Éxito!',
+                    text: 'Compra guardada correctamente',
+                    showConfirmButton: false,
+                    timer: 1500
+                }).then(() => {
+                    volverACompras();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error en fetch:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Error al guardar la compra: ' + error.message
+            });
+        });
+    });
+    
+    function cargarProductos() {
+        fetch('/api/inventario/productos/buscar')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    productos = data.productos;
+                    actualizarListaProductos();
+                }
+            })
+            .catch(error => {
+                console.error('Error al cargar productos:', error);
+            });
+    }
+    
+    function filtrarProductos(busqueda) {
+        const url = busqueda ? `/api/inventario/productos/buscar?busqueda=${encodeURIComponent(busqueda)}` : '/api/inventario/productos/buscar';
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    productos = data.productos;
+                    actualizarListaProductos();
+                }
+            })
+            .catch(error => {
+                console.error('Error al filtrar productos:', error);
+            });
+    }
+    
+    function actualizarListaProductos() {
+        const select = $('#producto_seleccion');
+        select.empty();
+        
+        productos.forEach(function(producto) {
+            select.append(`<option value="${producto.id}">${producto.nombre} (${producto.unidad_medida})</option>`);
+        });
+    }
+    
+    function calcularTotalItem() {
+        const cantidad = parseFloat($('#cantidad').val()) || 0;
+        const precio = parseFloat($('#precio_unitario').val()) || 0;
+        const total = cantidad * precio;
+        $('#total_item').val(total.toFixed(2));
+    }
+    
+    function agregarProducto() {
+        const productoId = $('#producto_seleccion').val();
+        const cantidad = parseFloat($('#cantidad').val()) || 0;
+        const precio = parseFloat($('#precio_unitario').val()) || 0;
+        
+        if (!productoId) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Debe seleccionar un producto'
+            });
+            return;
+        }
+        
+        if (cantidad <= 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'La cantidad debe ser mayor a 0'
+            });
+            return;
+        }
+        
+        if (precio <= 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'El precio debe ser mayor a 0'
+            });
+            return;
+        }
+        
+        const producto = productos.find(p => p.id == productoId);
+        const total = cantidad * precio;
+        
+        const item = {
+            producto_id: parseInt(productoId),
+            cantidad: cantidad,
+            precio: precio,
+            total: total
+        };
+        
+        itemsCompra.push(item);
+        actualizarTablaItems();
+        limpiarCampos();
+        calcularTotalGeneral();
+        $('#btnGuardar').prop('disabled', false);
+    }
+    
+    function actualizarTablaItems() {
+        const tbody = $('#tablaItems tbody');
+        tbody.empty();
+        
+        itemsCompra.forEach(function(item, index) {
+            const producto = productos.find(p => p.id == item.producto_id);
+            const row = `
+                <tr>
+                    <td>${producto ? producto.nombre : 'Producto no encontrado'}</td>
+                    <td>${item.cantidad}</td>
+                    <td>$${item.precio.toFixed(2)}</td>
+                    <td>$${item.total.toFixed(2)}</td>
+                    <td>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="eliminarItem(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+            tbody.append(row);
+        });
+    }
+    
+    function eliminarItem(index) {
+        itemsCompra.splice(index, 1);
+        actualizarTablaItems();
+        calcularTotalGeneral();
+        $('#btnGuardar').prop('disabled', itemsCompra.length === 0);
+    }
+    
+    function calcularTotalGeneral() {
+        const total = itemsCompra.reduce((sum, item) => sum + item.total, 0);
+        $('#totalGeneral').text(`$${total.toFixed(2)}`);
+    }
+    
+    function limpiarCampos() {
+        $('#producto_seleccion').val('');
+        $('#cantidad').val('1');
+        $('#precio_unitario').val('0');
+        $('#total_item').val('0');
+    }
+    
+    function limpiarFormularioCompleto() {
+        $('#formCompra')[0].reset();
+        $('#fecha').val('{{ today }}');
+        itemsCompra = [];
+        actualizarTablaItems();
+        calcularTotalGeneral();
+        $('#btnGuardar').prop('disabled', true);
+        limpiarCampos();
+    }
+    
+    // Hacer la función eliminarItem global
+    window.eliminarItem = eliminarItem;
+});
+
+// Función para volver a la lista de compras
+function volverACompras() {
+    console.log('Volviendo a compras');
+    
+    // Limpiar el formulario
+    $('#formCompra')[0].reset();
+    $('#fecha').val('{{ today }}');
+    
+    // Verificar si estamos en el contexto del manager
+    const contenidoSeccion = document.getElementById('contenido-seccion');
+    if (contenidoSeccion && typeof cargarSeccion === 'function') {
+        // Estamos en el manager, cerrar modal y recargar sección
+        console.log('Cerrando modal y recargando compras');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('formModal'));
+        if (modal) {
+            modal.hide();
+        }
+        cargarSeccion('inventario/compras');
+    } else {
+        // Estamos en una página independiente, redirigir
+        console.log('Redirigiendo a manager');
+        window.location.href = '/manager/inventario/compras';
+    }
+}
+</script> 

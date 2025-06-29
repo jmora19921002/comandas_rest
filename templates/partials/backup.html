@@ -1,0 +1,281 @@
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Respaldo Manual</h5>
+                </div>
+                <div class="card-body">
+                    <form id="backupForm">
+                        <div class="mb-3">
+                            <label for="ruta" class="form-label">Ruta de Respaldo</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="ruta" name="ruta" required>
+                                <button class="btn btn-outline-secondary" type="button" onclick="seleccionarRuta()">
+                                    <i class="bi bi-folder"></i> Seleccionar
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-download"></i> Crear Respaldo
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Respaldo Automático</h5>
+                </div>
+                <div class="card-body">
+                    <form id="backupAutomaticoForm">
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="automatico" name="automatico">
+                                <label class="form-check-label" for="automatico">Activar respaldo automático</label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="frecuencia" class="form-label">Frecuencia</label>
+                            <select class="form-select" id="frecuencia" name="frecuencia">
+                                <option value="diario">Diario</option>
+                                <option value="semanal">Semanal</option>
+                                <option value="mensual">Mensual</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="rutaAutomatica" class="form-label">Ruta de Respaldo</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="rutaAutomatica" name="rutaAutomatica" required>
+                                <button class="btn btn-outline-secondary" type="button" onclick="seleccionarRutaAutomatica()">
+                                    <i class="bi bi-folder"></i> Seleccionar
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Guardar Configuración
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Actualizar Estructura de Base de Datos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Nota:</strong> Esta función actualiza la estructura de la tabla comandas para incluir el campo usuario_id y servicio. 
+                        Esto es necesario para que la impresión de comandas funcione correctamente con el nombre del usuario.
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-warning" onclick="actualizarEstructuraComandas()">
+                            <i class="bi bi-database-gear"></i> Actualizar Estructura de Comandas
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="verificarEstructuraComandas()">
+                            <i class="bi bi-search"></i> Verificar Estructura
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="limpiarRegistrosProblematicos()">
+                            <i class="bi bi-broom"></i> Limpiar Registros
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Cargar configuración actual
+    cargarConfiguracionBackup();
+    
+    // Manejar formulario de backup manual
+    document.getElementById('backupForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        crearBackup(false);
+    });
+    
+    // Manejar formulario de backup automático
+    document.getElementById('backupAutomaticoForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        crearBackup(true);
+    });
+});
+
+function cargarConfiguracionBackup() {
+    fetch('/api/backup/configuracion')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('automatico').checked = data.config.automatico;
+                document.getElementById('frecuencia').value = data.config.frecuencia;
+                document.getElementById('rutaAutomatica').value = data.config.ruta;
+            }
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function crearBackup(automatico) {
+    const ruta = automatico ? document.getElementById('rutaAutomatica').value : document.getElementById('ruta').value;
+    const frecuencia = document.getElementById('frecuencia').value;
+    
+    fetch('/api/backup', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            ruta: ruta,
+            automatico: automatico,
+            frecuencia: frecuencia
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            mostrarNotificacion(data.message, 'success');
+        } else {
+            mostrarNotificacion(data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarNotificacion('Error al crear el backup', 'error');
+    });
+}
+
+function seleccionarRuta() {
+    fetch('/api/seleccionar-carpeta', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('ruta').value = data.ruta;
+        } else {
+            mostrarNotificacion(data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarNotificacion('Error al seleccionar la carpeta', 'error');
+    });
+}
+
+function seleccionarRutaAutomatica() {
+    fetch('/api/seleccionar-carpeta', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('rutaAutomatica').value = data.ruta;
+        } else {
+            mostrarNotificacion(data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarNotificacion('Error al seleccionar la carpeta', 'error');
+    });
+}
+
+function actualizarEstructuraComandas() {
+    if (confirm('¿Está seguro de que desea actualizar la estructura de la tabla comandas? Esta operación agregará los campos usuario_id y servicio.')) {
+        fetch('/api/actualizar-estructura-comandas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                mostrarNotificacion(data.message, 'success');
+            } else {
+                mostrarNotificacion(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            mostrarNotificacion('Error al actualizar la estructura', 'error');
+        });
+    }
+}
+
+function verificarEstructuraComandas() {
+    fetch('/api/verificar-estructura-comandas', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const estructura = data.estructura;
+            let mensaje = 'Estructura de la tabla comandas:\n\n';
+            
+            mensaje += 'Columnas:\n';
+            estructura.columnas.forEach(col => {
+                mensaje += `- ${col.COLUMN_NAME}: ${col.DATA_TYPE} (${col.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'})\n`;
+            });
+            
+            mensaje += '\nForeign Keys:\n';
+            estructura.foreign_keys.forEach(fk => {
+                mensaje += `- ${fk.COLUMN_NAME} -> ${fk.REFERENCED_TABLE_NAME}.${fk.REFERENCED_COLUMN_NAME}\n`;
+            });
+            
+            mensaje += '\nComandas de ejemplo:\n';
+            estructura.comandas_ejemplo.forEach(comanda => {
+                mensaje += `- ID: ${comanda.id}, Mesa: ${comanda.mesa_nombre}, Usuario: ${comanda.usuario_nombre || 'NULL'}\n`;
+            });
+            
+            alert(mensaje);
+        } else {
+            mostrarNotificacion(data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarNotificacion('Error al verificar la estructura', 'error');
+    });
+}
+
+function limpiarRegistrosProblematicos() {
+    if (confirm('¿Está seguro de que desea limpiar los registros problemáticos? Esta operación corregirá registros con valores incorrectos en el campo impreso.')) {
+        fetch('/api/limpiar-registros-problematicos', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                mostrarNotificacion(data.message, 'success');
+            } else {
+                mostrarNotificacion(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            mostrarNotificacion('Error al limpiar los registros', 'error');
+        });
+    }
+}
+</script> 

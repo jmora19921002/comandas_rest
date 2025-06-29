@@ -1,0 +1,139 @@
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Actualizar Estructura de Base de Datos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Importante:</strong> Antes de actualizar la estructura, asegúrese de:
+                        <ul class="mb-0 mt-2">
+                            <li>Hacer un respaldo completo de la base de datos</li>
+                            <li>Verificar que el archivo SQL contenga solo cambios estructurales</li>
+                            <li>No incluir sentencias que eliminen datos existentes</li>
+                        </ul>
+                    </div>
+                    
+                    <form id="actualizarEstructuraForm">
+                        <div class="mb-3">
+                            <label for="archivoSQL" class="form-label">Archivo SQL de Actualización</label>
+                            <input type="file" class="form-control" id="archivoSQL" name="archivo" accept=".sql" required>
+                            <div class="form-text">Seleccione el archivo SQL que contiene las actualizaciones de la estructura</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="confirmar" required>
+                                <label class="form-check-label" for="confirmar">
+                                    Confirmo que he realizado un respaldo de la base de datos
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-arrow-up-circle"></i> Actualizar Estructura
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="card shadow-sm mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Historial de Actualizaciones</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Versión</th>
+                                    <th>Estado</th>
+                                    <th>Detalles</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historialActualizaciones">
+                                <!-- Se llenará dinámicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Cargar historial de actualizaciones
+    cargarHistorialActualizaciones();
+    
+    // Manejar formulario de actualización
+    document.getElementById('actualizarEstructuraForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (!document.getElementById('confirmar').checked) {
+            mostrarNotificacion('Debe confirmar que ha realizado un respaldo', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        const archivo = document.getElementById('archivoSQL').files[0];
+        
+        if (!archivo) {
+            mostrarNotificacion('Debe seleccionar un archivo SQL', 'error');
+            return;
+        }
+        
+        formData.append('archivo', archivo);
+        
+        fetch('/api/actualizar-estructura', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                mostrarNotificacion(data.message, 'success');
+                document.getElementById('actualizarEstructuraForm').reset();
+                cargarHistorialActualizaciones();
+            } else {
+                mostrarNotificacion(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            mostrarNotificacion('Error al actualizar la estructura', 'error');
+        });
+    });
+});
+
+function cargarHistorialActualizaciones() {
+    fetch('/api/actualizar-estructura/historial')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const tbody = document.getElementById('historialActualizaciones');
+                tbody.innerHTML = '';
+                
+                data.historial.forEach(actualizacion => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${actualizacion.fecha}</td>
+                        <td>${actualizacion.version}</td>
+                        <td>
+                            <span class="badge bg-${actualizacion.estado === 'exitoso' ? 'success' : 'danger'}">
+                                ${actualizacion.estado}
+                            </span>
+                        </td>
+                        <td>${actualizacion.detalles}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        })
+        .catch(error => console.error('Error:', error));
+}
+</script> 

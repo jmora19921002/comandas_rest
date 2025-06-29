@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Override the navbar to be empty -->
+{% block navbar %}{% endblock %}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Gestión de Impresoras</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#impresoraModal">
+            <i class="fas fa-plus"></i> Nueva Impresora
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>IP</th>
+                    <th>Puerto</th>
+                    <th>Grupos</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for impresora in impresoras %}
+                <tr>
+                    <td>{{ impresora.nombre }}</td>
+                    <td>{{ impresora.tipo }}</td>
+                    <td>{{ impresora.ip or '-' }}</td>
+                    <td>{{ impresora.puerto or '-' }}</td>
+                    <td>
+                        {% if impresora.grupos_ids %}
+                            {% set grupos_list = impresora.grupos_ids.split(',') %}
+                            {% for grupo in grupos %}
+                                {% if grupo.id in grupos_list %}
+                                    <span class="badge bg-info">{{ grupo.nombre }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">Sin grupos asignados</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge {% if impresora.estatus == 'activa' %}bg-success{% else %}bg-danger{% endif %}">
+                            {{ impresora.estatus }}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-warning editar-impresora" 
+                                data-id="{{ impresora.id }}"
+                                data-nombre="{{ impresora.nombre }}"
+                                data-tipo="{{ impresora.tipo }}"
+                                data-ip="{{ impresora.ip }}"
+                                data-puerto="{{ impresora.puerto }}"
+                                data-estatus="{{ impresora.estatus }}"
+                                data-grupos="{{ impresora.grupos_ids }}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger eliminar-impresora" data-id="{{ impresora.id }}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal para crear/editar impresora -->
+<div class="modal fade" id="impresoraModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Impresora</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="impresoraForm">
+                    <input type="hidden" id="impresoraId">
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="nombre" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tipo" class="form-label">Tipo</label>
+                        <select class="form-select" id="tipo" required>
+                            <option value="windows">Windows</option>
+                            <option value="red">Red</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Campos para impresoras de Windows -->
+                    <div class="mb-3 windows-printer-fields">
+                        <label for="windowsPrinterSelect" class="form-label">Seleccionar Impresora de Windows</label>
+                        <select class="form-select" id="windowsPrinterSelect">
+                            <option value="">Cargando impresoras...</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 red-fields" style="display: none;">
+                        <label for="ip" class="form-label">IP</label>
+                        <input type="text" class="form-control" id="ip">
+                    </div>
+                    <div class="mb-3 red-fields" style="display: none;">
+                        <label for="puerto" class="form-label">Puerto</label>
+                        <input type="number" class="form-control" id="puerto">
+                    </div>
+                    <div class="mb-3">
+                        <label for="estatus" class="form-label">Estado</label>
+                        <select class="form-select" id="estatus" required>
+                            <option value="activa">Activa</option>
+                            <option value="inactiva">Inactiva</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Grupos Asignados</label>
+                        <div class="grupos-container">
+                            {% for grupo in grupos %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" 
+                                       name="grupos" value="{{ grupo.id }}" 
+                                       id="grupo{{ grupo.id }}">
+                                <label class="form-check-label" for="grupo{{ grupo.id }}">
+                                    {{ grupo.nombre }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="guardarImpresora">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% endblock %} 

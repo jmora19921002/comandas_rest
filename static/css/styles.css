@@ -1,0 +1,783 @@
+/* Estilos generales */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.login-body {
+    background-color: #e9ecef;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+}
+
+.login-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+}
+
+.sidebar-comanda-container {
+    background-color: #343a40;
+    color: white;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.mesas-section {
+    flex-shrink: 0;
+}
+
+.comanda-detalle-section {
+    flex: 1;
+    min-height: 300px;
+    overflow-y: auto;
+    background-color: #454d55;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.comanda-detalle {
+    background-color: white;
+    color: #212529;
+    padding: 15px;
+    border-radius: 5px;
+    height: 100%;
+}
+
+.comanda-table {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Ajustes responsivos */
+@media (max-width: 992px) {
+    .sidebar-comanda-container {
+        order: 2;
+    }
+    
+    .main-content {
+        order: 1;
+    }
+    
+    .comanda-detalle-section {
+        min-height: 200px;
+    }
+}
+
+.main-content {
+    padding: 20px;
+}
+
+/* Estilos para mesas */
+.mesas-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+}
+
+.mesa-card {
+    padding: 15px;
+    text-align: center;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.mesa-card:hover {
+    transform: scale(1.05);
+}
+
+.mesa-card.libre {
+    background-color: #28a745;
+}
+
+.mesa-card.ocupada {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.mesa-card.seleccionada {
+    border: 3px solid #007bff;
+}
+
+.items-container {
+    --item-min-height: 120px;
+}
+
+.item-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-height: var(--item-min-height);
+    display: flex;
+    flex-direction: column;
+}
+
+.item-card .card-body {
+    flex: 1;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.item-card .card-title {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.item-card .card-text {
+    font-size: 1.1rem;
+    margin-top: auto;
+    margin-bottom: 0.5rem;
+}
+
+.item-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    border-color: #007bff;
+}
+
+/* Ajustes responsivos */
+@media (max-width: 768px) {
+    .items-container {
+        --item-min-height: 100px;
+    }
+    
+    .item-card .card-body {
+        padding: 0.75rem;
+    }
+    
+    .item-card .card-title {
+        font-size: 0.9rem;
+    }
+    
+    .item-card .card-text {
+        font-size: 1rem;
+    }
+}
+
+#detalle-comanda tr:hover {
+    background-color: #f1f1f1;
+}
+
+/* Estilos para el manager */
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 250px;
+    background-color: #343a40;
+    padding: 1rem;
+    z-index: 1000;
+    transition: transform 0.3s ease;
+    overflow-y: auto;
+}
+
+.sidebar .nav-link {
+    color: #ecf0f1;
+    padding: 12px 20px;
+    margin: 4px 0;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.sidebar .nav-link:hover {
+    background-color: #34495e;
+    color: #fff;
+    transform: translateX(5px);
+}
+
+.sidebar .nav-link.active {
+    background-color: #3498db;
+    color: #fff;
+}
+
+.sidebar .nav-link i {
+    margin-right: 10px;
+    font-size: 1.1em;
+}
+
+.main-content {
+    margin-left: 250px;
+    padding: 2rem;
+    min-height: 100vh;
+    background-color: #f8f9fa;
+    transition: margin-left 0.3s ease;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #eee;
+    padding: 15px 20px;
+    border-radius: 10px 10px 0 0 !important;
+}
+
+.card-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #2c3e50;
+}
+
+.table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+    border-radius: 0 0 10px 10px;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    color: #2c3e50;
+    font-weight: 600;
+    padding: 12px 15px;
+}
+
+.table tbody td {
+    padding: 12px 15px;
+    vertical-align: middle;
+}
+
+.btn {
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+    transform: translateY(-1px);
+}
+
+.btn-success {
+    background-color: #2ecc71;
+    border-color: #2ecc71;
+}
+
+.btn-success:hover {
+    background-color: #27ae60;
+    border-color: #27ae60;
+    transform: translateY(-1px);
+}
+
+.btn-danger {
+    background-color: #e74c3c;
+    border-color: #e74c3c;
+}
+
+.btn-danger:hover {
+    background-color: #c0392b;
+    border-color: #c0392b;
+    transform: translateY(-1px);
+}
+
+.alert {
+    border: none;
+    border-radius: 5px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.modal-content {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    border-radius: 10px 10px 0 0;
+}
+
+.modal-footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #eee;
+    border-radius: 0 0 10px 10px;
+}
+
+/* Estilos para formularios en el manager */
+.form-control {
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+.form-label {
+    font-weight: 500;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+/* Estilos para filtros y búsquedas */
+.filter-section {
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.filter-section .form-group {
+    margin-bottom: 15px;
+}
+
+/* Estilos para estadísticas y resúmenes */
+.stats-card {
+    background: linear-gradient(45deg, #3498db, #2980b9);
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.stats-card h4 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+.stats-card .number {
+    font-size: 2rem;
+    font-weight: 600;
+    margin: 10px 0;
+}
+
+/* Estilos para acciones en tablas */
+.action-buttons .btn {
+    padding: 5px 10px;
+    margin: 0 2px;
+}
+
+.action-buttons .btn i {
+    font-size: 0.9rem;
+}
+
+/* Estilos para paginación */
+.pagination {
+    margin-top: 20px;
+}
+
+.pagination .page-link {
+    color: #3498db;
+    border: none;
+    margin: 0 2px;
+    border-radius: 5px;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+/* Estilos para tooltips y popovers */
+.tooltip {
+    font-size: 0.9rem;
+}
+
+.popover {
+    border: none;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    border-radius: 5px;
+}
+
+/* Estilos para scrollbar personalizado */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Estilos responsivos para móviles */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: -280px;
+        width: 280px;
+        height: 100vh;
+        background-color: #343a40;
+        z-index: 1050;
+        transition: left 0.3s ease;
+        overflow-y: auto;
+    }
+
+    .sidebar.show {
+        left: 0;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 1rem;
+    }
+
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0,0,0,0.5);
+        z-index: 1040;
+    }
+
+    .sidebar-overlay.show {
+        display: block;
+    }
+
+    /* Botón para mostrar/ocultar sidebar */
+    .sidebar-toggle {
+        display: block !important;
+        position: fixed;
+        top: 70px;
+        left: 20px;
+        z-index: 1060;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        background-color: #3498db;
+        color: white;
+        border: none;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .sidebar-toggle i {
+        font-size: 1.5rem;
+    }
+
+    .sidebar .nav-link {
+        padding: 15px 20px;
+        font-size: 1.1rem;
+        color: white;
+        border-radius: 0;
+        display: block;
+        width: 100%;
+    }
+
+    .sidebar .nav-link i {
+        font-size: 1.3rem;
+        margin-right: 15px;
+    }
+
+    .sidebar .nav-link:hover,
+    .sidebar .nav-link.active {
+        background-color: rgba(255,255,255,0.1);
+        transform: none;
+    }
+
+    /* Ajustes generales */
+    .container-fluid {
+        padding: 10px;
+    }
+
+    /* Sidebar para móviles */
+    .sidebar {
+        position: fixed;
+        top: 56px; /* Altura de la navbar */
+        left: -100%;
+        width: 80%;
+        max-width: 300px;
+        height: calc(100vh - 56px);
+        z-index: 1000;
+        transition: left 0.3s ease;
+        overflow-y: auto;
+    }
+
+    .sidebar .nav-link {
+        padding: 15px 20px;
+        font-size: 1.1rem;
+    }
+
+    .sidebar .nav-link i {
+        font-size: 1.3rem;
+    }
+
+    /* Botón para mostrar/ocultar sidebar */
+    .sidebar-toggle {
+        display: block !important;
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1001;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background-color: #3498db;
+        color: white;
+        border: none;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    /* Contenido principal */
+    .main-content {
+        padding: 15px;
+        margin-left: 0;
+        width: 100%;
+    }
+
+    /* Cards y contenedores */
+    .card {
+        margin-bottom: 15px;
+    }
+
+    .card-header {
+        padding: 10px 15px;
+    }
+
+    .card-body {
+        padding: 15px;
+    }
+
+    /* Tablas responsivas */
+    .table-responsive {
+        margin: 0 -15px;
+        padding: 0 15px;
+    }
+
+    .table th, .table td {
+        padding: 8px;
+        font-size: 0.9rem;
+    }
+
+    /* Botones y controles */
+    .btn {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+
+    .action-buttons .btn {
+        padding: 6px 10px;
+        margin: 2px;
+    }
+
+    /* Formularios */
+    .form-control {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+
+    .form-label {
+        font-size: 0.9rem;
+    }
+
+    /* Modales */
+    .modal-dialog {
+        margin: 10px;
+    }
+
+    .modal-content {
+        border-radius: 8px;
+    }
+
+    .modal-header {
+        padding: 10px 15px;
+    }
+
+    .modal-body {
+        padding: 15px;
+    }
+
+    .modal-footer {
+        padding: 10px 15px;
+    }
+
+    /* Filtros y búsquedas */
+    .filter-section {
+        padding: 10px;
+    }
+
+    .filter-section .form-group {
+        margin-bottom: 10px;
+    }
+
+    /* Estadísticas */
+    .stats-card {
+        padding: 15px;
+    }
+
+    .stats-card h4 {
+        font-size: 1rem;
+    }
+
+    .stats-card .number {
+        font-size: 1.5rem;
+    }
+
+    /* Overlay para cuando el sidebar está abierto */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0,0,0,0.5);
+        z-index: 999;
+    }
+
+    .sidebar-overlay.show {
+        display: block;
+    }
+
+    /* Ajustes para la tabla de comandas */
+    .comanda-detalle-section {
+        min-height: 200px;
+    }
+
+    /* Ajustes para los botones de acción en tablas */
+    .table .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .table .action-buttons .btn {
+        width: 100%;
+        margin: 0;
+    }
+
+    /* Ajustes para los mensajes de alerta */
+    .alert {
+        padding: 10px 15px;
+        margin-bottom: 15px;
+    }
+
+    /* Ajustes para la paginación */
+    .pagination {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .pagination .page-link {
+        padding: 6px 12px;
+    }
+}
+
+@media (min-width: 769px) {
+    .sidebar-toggle {
+        display: none;
+    }
+
+    .sidebar-overlay {
+        display: none;
+    }
+}
+
+/* Ajustes específicos para tablets */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .sidebar {
+        width: 200px;
+    }
+
+    .main-content {
+        margin-left: 200px;
+    }
+
+    .card {
+        margin-bottom: 15px;
+    }
+
+    .table th, .table td {
+        padding: 10px;
+    }
+}
+
+/* Ajustes para pantallas muy pequeñas */
+@media (max-width: 360px) {
+    .container-fluid {
+        padding: 5px;
+    }
+
+    .main-content {
+        padding: 10px;
+    }
+
+    .card-header h3 {
+        font-size: 1.2rem;
+    }
+
+    .btn {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+
+    .table th, .table td {
+        padding: 6px;
+        font-size: 0.8rem;
+    }
+}
+
+.comandas-link-container {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    z-index: 1000;
+}
+
+.comandas-link-container .btn {
+    padding: 8px 16px;
+    border-radius: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+
+.comandas-link-container .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 768px) {
+    .comandas-link-container {
+        top: auto;
+        bottom: 20px;
+        right: 20px;
+    }
+}

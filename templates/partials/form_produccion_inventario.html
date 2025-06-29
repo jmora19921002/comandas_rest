@@ -1,0 +1,315 @@
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Nueva Producción</h4>
+                </div>
+                <div class="card-body">
+                    <form id="formProduccion">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="concepto">Concepto de Producción *</label>
+                                    <input type="text" class="form-control" id="concepto" name="concepto" 
+                                           placeholder="Ej: Producción semanal de pan" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fecha">Fecha de Producción *</label>
+                                    <input type="date" class="form-control" id="fecha" name="fecha" 
+                                           value="{{ today }}" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        <h5>Recetas a Producir</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="buscar_receta">Buscar Receta</label>
+                                    <input type="text" class="form-control" id="buscar_receta" 
+                                           placeholder="Escriba para buscar...">
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label>Recetas Disponibles</label>
+                                    <select class="form-control" id="receta_seleccion" size="5">
+                                        <option value="">Cargando recetas...</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="cantidad_produccion">Cantidad a Producir</label>
+                                    <input type="number" class="form-control" id="cantidad_produccion" 
+                                           step="0.01" min="0" value="1">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="unidad_producida">Unidad Producida</label>
+                                    <input type="text" class="form-control" id="unidad_producida" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <button type="button" class="btn btn-success btn-block" id="btnAgregarReceta">
+                                        <i class="fas fa-plus"></i> Agregar Receta
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <h6>Recetas Agregadas</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-striped" id="tablaRecetas">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                <th>Receta</th>
+                                                <th>Cantidad</th>
+                                                <th>Unidad Producida</th>
+                                                <th>Total Producido</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary" id="btnGuardar" disabled>
+                                    <i class="fas fa-save"></i> Guardar Producción
+                                </button>
+                                <a href="/manager/inventario/produccion" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Volver
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    let recetas = [];
+    let recetasProduccion = [];
+    
+    // Cargar recetas disponibles
+    cargarRecetas();
+    
+    // Buscar recetas
+    $('#buscar_receta').on('input', function() {
+        const busqueda = $(this).val();
+        filtrarRecetas(busqueda);
+    });
+    
+    // Seleccionar receta
+    $('#receta_seleccion').on('change', function() {
+        const recetaId = $(this).val();
+        if (recetaId) {
+            const receta = recetas.find(r => r.id == recetaId);
+            if (receta) {
+                $('#unidad_producida').val(receta.unidad_producida);
+            }
+        }
+    });
+    
+    // Agregar receta a la producción
+    $('#btnAgregarReceta').on('click', function() {
+        agregarReceta();
+    });
+    
+    // Manejo del formulario
+    $('#formProduccion').on('submit', function(e) {
+        e.preventDefault();
+        
+        if (recetasProduccion.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Debe agregar al menos una receta a la producción'
+            });
+            return;
+        }
+        
+        const formData = {
+            concepto: $('#concepto').val(),
+            fecha: $('#fecha').val(),
+            recetas: recetasProduccion
+        };
+        
+        $.ajax({
+            url: '/api/inventario/produccion',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Éxito',
+                        text: response.message,
+                        showConfirmButton: false,
+                        timer: 1500
+                    }).then(() => {
+                        window.location.href = '/manager/inventario/produccion';
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: response.message
+                    });
+                }
+            },
+            error: function(xhr) {
+                const response = xhr.responseJSON;
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: response ? response.message : 'Error al procesar la solicitud'
+                });
+            }
+        });
+    });
+    
+    function cargarRecetas() {
+        $.ajax({
+            url: '/api/inventario/recetas/disponibles',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    recetas = response.recetas;
+                    actualizarListaRecetas();
+                }
+            }
+        });
+    }
+    
+    function filtrarRecetas(busqueda) {
+        $.ajax({
+            url: '/api/inventario/recetas/disponibles',
+            method: 'GET',
+            data: { busqueda: busqueda },
+            success: function(response) {
+                if (response.success) {
+                    recetas = response.recetas;
+                    actualizarListaRecetas();
+                }
+            }
+        });
+    }
+    
+    function actualizarListaRecetas() {
+        const select = $('#receta_seleccion');
+        select.empty();
+        
+        recetas.forEach(function(receta) {
+            select.append(`<option value="${receta.id}">${receta.nombre} (${receta.unidad_producida})</option>`);
+        });
+    }
+    
+    function agregarReceta() {
+        const recetaId = $('#receta_seleccion').val();
+        const cantidad = parseFloat($('#cantidad_produccion').val()) || 0;
+        
+        if (!recetaId) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Debe seleccionar una receta'
+            });
+            return;
+        }
+        
+        if (cantidad <= 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'La cantidad debe ser mayor a 0'
+            });
+            return;
+        }
+        
+        // Verificar que no se agregue la misma receta dos veces
+        if (recetasProduccion.some(item => item.receta_id == recetaId)) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Esta receta ya está en la producción'
+            });
+            return;
+        }
+        
+        const receta = recetas.find(r => r.id == recetaId);
+        const totalProducido = cantidad * receta.unidad_producida;
+        
+        const item = {
+            receta_id: parseInt(recetaId),
+            cantidad: cantidad,
+            total_producido: totalProducido
+        };
+        
+        recetasProduccion.push(item);
+        actualizarTablaRecetas();
+        limpiarCamposReceta();
+        $('#btnGuardar').prop('disabled', false);
+    }
+    
+    function actualizarTablaRecetas() {
+        const tbody = $('#tablaRecetas tbody');
+        tbody.empty();
+        
+        recetasProduccion.forEach(function(item, index) {
+            const receta = recetas.find(r => r.id == item.receta_id);
+            const row = `
+                <tr>
+                    <td>${receta ? receta.nombre : 'Receta no encontrada'}</td>
+                    <td>${item.cantidad}</td>
+                    <td>${receta ? receta.unidad_producida : ''}</td>
+                    <td>${item.total_producido.toFixed(2)}</td>
+                    <td>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="eliminarReceta(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+            tbody.append(row);
+        });
+    }
+    
+    function eliminarReceta(index) {
+        recetasProduccion.splice(index, 1);
+        actualizarTablaRecetas();
+        $('#btnGuardar').prop('disabled', recetasProduccion.length === 0);
+    }
+    
+    function limpiarCamposReceta() {
+        $('#receta_seleccion').val('');
+        $('#cantidad_produccion').val('1');
+        $('#unidad_producida').val('');
+    }
+    
+    // Hacer la función eliminarReceta global
+    window.eliminarReceta = eliminarReceta;
+});
+</script> 

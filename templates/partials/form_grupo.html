@@ -1,0 +1,55 @@
+<form id="modalForm">
+    <input type="hidden" name="tipo" value="grupos">
+    {% if grupo %}
+        <input type="hidden" name="is_edit" value="true">
+        <input type="hidden" name="id" value="{{ grupo[0] }}">
+    {% else %}
+        <input type="hidden" name="is_edit" value="false">
+    {% endif %}
+    
+    <div class="mb-3">
+        <label for="id" class="form-label">Código</label>
+        <input type="text" class="form-control" id="id" name="id" 
+               value="{{ grupo[0] if grupo else '' }}" 
+               {% if grupo %}readonly{% endif %} required>
+        <small class="text-muted">Este será el identificador único del grupo</small>
+    </div>
+    
+    <div class="mb-3">
+        <label for="nombre" class="form-label">Nombre</label>
+        <input type="text" class="form-control" id="nombre" name="nombre"
+               value="{{ grupo[1] if grupo else '' }}" required>
+    </div>
+
+    <div class="mb-3">
+        <label for="formato" class="form-label">Formato</label>
+        <input type="text" class="form-control" id="formato" name="formato"
+               value="{{ grupo[2] if grupo else '' }}" required>
+    </div>
+
+    <div class="mb-3">
+        <label for="estatus" class="form-label">Estatus</label>
+        <select class="form-select" id="estatus" name="estatus" required>
+            <option value="activo" {% if grupo and grupo[4] == 'activo' %}selected{% endif %}>Activo</option>
+            <option value="inactivo" {% if grupo and grupo[4] == 'inactivo' %}selected{% endif %}>Inactivo</option>
+        </select>
+    </div>
+
+    <div class="alert alert-info">
+        <small>Los campos marcados con <span class="text-danger">*</span> son obligatorios</small>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Botón guardar del modal
+    document.getElementById('modalSaveBtn').onclick = function() {
+        const form = document.getElementById('modalForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+        guardarFormulario();
+    };
+});
+</script> 

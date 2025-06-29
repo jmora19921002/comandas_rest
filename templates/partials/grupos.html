@@ -1,0 +1,107 @@
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5>Gestor de Grupos</h5>
+        <button class="btn btn-primary btn-sm btn-agregar" data-tipo="grupos">
+            <i class="bi bi-plus"></i> Nuevo Grupo
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="grupos-table-body">
+                    {% for grupo in grupos %}
+                    <tr>
+                        <td>{{ grupo.codigo }}</td>
+                        <td>{{ grupo.nombre }}</td>
+                        <td>
+                            <button class="btn btn-warning btn-sm btn-editar" data-tipo="grupos" data-id="{{ grupo.id }}">
+                                <i class="bi bi-pencil"></i> Editar
+                            </button>
+                            <button class="btn btn-danger btn-sm btn-eliminar" data-tipo="grupos" data-id="{{ grupo.id }}">
+                                <i class="bi bi-trash"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function mostrarFormularioGrupo(grupo = null) {
+    const titulo = grupo ? 'Editar Grupo' : 'Nuevo Grupo';
+    const campos = ['codigo', 'nombre'];
+    
+    mostrarFormulario(titulo, campos, grupo?.codigo).then(() => {
+        if (grupo) {
+            // Rellenar formulario con datos del grupo
+            document.getElementById('codigo').value = grupo.codigo;
+            document.getElementById('nombre').value = grupo.nombre;
+        }
+        
+        document.getElementById('modalSaveBtn').onclick = function() {
+            guardarGrupo(grupo?.codigo);
+        };
+    });
+}
+
+function guardarGrupo(codigo = null) {
+    const formData = {
+        codigo: document.getElementById('codigo').value,
+        nombre: document.getElementById('nombre').value
+    };
+    
+    const url = codigo ? `/api/grupos/${codigo}` : '/api/grupos';
+    const method = codigo ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    });
+}
+
+function editarGrupo(codigo) {
+    fetch(`/api/grupos/${codigo}`)
+        .then(response => response.json())
+        .then(grupo => mostrarFormularioGrupo(grupo));
+}
+
+function eliminarGrupo(codigo) {
+    if (confirm('¿Está seguro de eliminar este grupo?')) {
+        fetch(`/api/grupos/${codigo}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Botón guardar del modal
+    document.getElementById('modalSaveBtn').addEventListener('click', guardarFormulario);
+});
+</script>
