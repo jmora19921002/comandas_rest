@@ -1,0 +1,74 @@
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5>Gestor de Productos</h5>
+        <button class="btn btn-primary btn-sm btn-agregar" data-tipo="productos">
+            <i class="bi bi-plus"></i> Nuevo Producto
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Grupo</th>
+                        <th>Precio Venta</th>
+                        <th>Stock</th>
+                        <th>Estatus</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="productos-table-body">
+                    {% for producto in productos %}
+                    <tr>
+                        <td>{{ producto.id }}</td>
+                        <td>{{ producto.nombre }}</td>
+                        <td>{{ producto.grupo or 'Sin grupo' }}</td>
+                        <td>${{ "%.2f"|format(producto.precio_venta) }}</td>
+                        <td>{{ producto.cantidad_disponible }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if producto.estatus == 'activo' else 'danger' }}">
+                                {{ producto.estatus }}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-warning btn-sm btn-editar" data-tipo="productos" data-id="{{ producto.id }}">
+                                <i class="bi bi-pencil"></i> Editar
+                            </button>
+                            <button class="btn btn-danger btn-sm btn-eliminar" data-tipo="productos" data-id="{{ producto.id }}">
+                                <i class="bi bi-trash"></i> Eliminar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Configurar eventos para botones de productos
+    document.querySelectorAll('.btn-agregar[data-tipo="productos"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            mostrarFormularioAgregar('productos');
+        });
+    });
+
+    document.querySelectorAll('.btn-editar[data-tipo="productos"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            mostrarFormularioEditar('productos', id);
+        });
+    });
+
+    document.querySelectorAll('.btn-eliminar[data-tipo="productos"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            confirmarEliminar('productos', id);
+        });
+    });
+});
+</script> 

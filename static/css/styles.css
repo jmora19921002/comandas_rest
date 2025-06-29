@@ -781,3 +781,453 @@ body {
         right: 20px;
     }
 }
+
+/* Estilos para el manager mejorado */
+.manager-body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background-color: #f8f9fa;
+    overflow-x: hidden;
+}
+
+.manager-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.manager-sidebar {
+    background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+    min-height: calc(100vh - 80px); /* Restar altura del header */
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 80px; /* Altura del header */
+    height: calc(100vh - 80px);
+    overflow-y: auto;
+}
+
+.manager-sidebar .nav-link {
+    color: #ecf0f1;
+    padding: 12px 20px;
+    margin: 4px 0;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    border: none;
+    background: transparent;
+}
+
+.manager-sidebar .nav-link:hover {
+    background: linear-gradient(90deg, #3498db 0%, #2980b9 100%);
+    color: #fff;
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.manager-sidebar .nav-link.active {
+    background: linear-gradient(90deg, #e74c3c 0%, #c0392b 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+}
+
+.manager-sidebar .nav-link i {
+    width: 20px;
+    text-align: center;
+    margin-right: 10px;
+}
+
+.manager-sidebar .collapse .nav-link {
+    padding-left: 40px;
+    font-size: 0.9rem;
+    margin: 2px 0;
+}
+
+.manager-sidebar .collapse .nav-link:hover {
+    background: linear-gradient(90deg, #27ae60 0%, #229954 100%);
+}
+
+.manager-main-content {
+    background-color: #f8f9fa;
+    min-height: calc(100vh - 80px); /* Restar altura del header */
+    padding: 2rem;
+    margin-top: 0;
+}
+
+.manager-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: none;
+    transition: all 0.3s ease;
+}
+
+.manager-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.manager-card .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0 !important;
+    border: none;
+    padding: 1.5rem;
+}
+
+.manager-card .card-header h3 {
+    margin: 0;
+    font-weight: 600;
+}
+
+.manager-table {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.manager-table thead th {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: white;
+    border: none;
+    padding: 1rem;
+    font-weight: 600;
+}
+
+.manager-table tbody tr {
+    transition: all 0.2s ease;
+}
+
+.manager-table tbody tr:hover {
+    background-color: #f8f9fa;
+    transform: scale(1.01);
+}
+
+.manager-btn {
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.manager-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.manager-btn-primary:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.manager-btn-success {
+    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+    color: white;
+}
+
+.manager-btn-success:hover {
+    background: linear-gradient(135deg, #229954 0%, #1e8449 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+}
+
+.manager-btn-danger {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white;
+}
+
+.manager-btn-danger:hover {
+    background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+}
+
+.manager-btn-warning {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+}
+
+.manager-btn-warning:hover {
+    background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(243, 156, 18, 0.4);
+}
+
+.manager-modal .modal-content {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+.manager-modal .modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+    border: none;
+    padding: 1.5rem;
+}
+
+.manager-modal .modal-footer {
+    background-color: #f8f9fa;
+    border-radius: 0 0 12px 12px;
+    border: none;
+    padding: 1.5rem;
+}
+
+.manager-form-control {
+    border-radius: 8px;
+    border: 2px solid #e9ecef;
+    padding: 0.75rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.manager-form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.manager-stats-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+    transition: all 0.3s ease;
+}
+
+.manager-stats-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4);
+}
+
+.manager-stats-card h4 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.manager-stats-card p {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.manager-alert {
+    border-radius: 8px;
+    border: none;
+    padding: 1rem 1.5rem;
+}
+
+.manager-badge {
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-weight: 500;
+}
+
+/* Responsive design para manager */
+@media (max-width: 768px) {
+    .manager-sidebar {
+        position: fixed;
+        top: 80px; /* Altura del header */
+        left: -100%;
+        width: 280px;
+        z-index: 1050;
+        transition: left 0.3s ease;
+        height: calc(100vh - 80px);
+    }
+    
+    .manager-sidebar.show {
+        left: 0;
+    }
+    
+    .manager-main-content {
+        padding: 1rem;
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .manager-card {
+        margin-bottom: 1rem;
+    }
+    
+    .manager-table {
+        font-size: 0.9rem;
+    }
+    
+    .manager-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.9rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .manager-sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+    }
+}
+
+/* Animaciones para manager */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.manager-fade-in {
+    animation: fadeInUp 0.6s ease-out;
+}
+
+/* Estilos para el estado de carga */
+.manager-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.manager-loading .spinner-border {
+    width: 3rem;
+    height: 3rem;
+    color: #667eea;
+}
+
+/* Estilos para notificaciones */
+.manager-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Estilos para filtros */
+.manager-filter-section {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.manager-filter-section .form-group {
+    margin-bottom: 1rem;
+}
+
+.manager-filter-section .btn {
+    margin-top: 1.5rem;
+}
+
+/* Estilos para paginación */
+.manager-pagination .page-link {
+    border-radius: 6px;
+    margin: 0 2px;
+    border: none;
+    color: #667eea;
+    transition: all 0.3s ease;
+}
+
+.manager-pagination .page-link:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: translateY(-1px);
+}
+
+.manager-pagination .page-item.active .page-link {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Estilos para tooltips */
+.manager-tooltip {
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Estilos para dropdowns */
+.manager-dropdown .dropdown-menu {
+    border-radius: 8px;
+    border: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    padding: 0.5rem 0;
+}
+
+.manager-dropdown .dropdown-item {
+    padding: 0.75rem 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.manager-dropdown .dropdown-item:hover {
+    background-color: #007bff;
+    color: white;
+}
+
+/* Estilos para el switch de comandar */
+.form-switch-lg {
+    padding-left: 3rem;
+}
+
+.form-switch-lg .form-check-input {
+    width: 3rem;
+    height: 1.5rem;
+    margin-left: -3rem;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280, 0, 0, 0.25%29'/%3e%3c/svg%3e");
+    background-position: left center;
+    border-radius: 2rem;
+    transition: background-position .15s ease-in-out;
+}
+
+.form-switch-lg .form-check-input:focus {
+    border-color: rgba(0, 123, 255, 0.25);
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.form-switch-lg .form-check-input:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
+    background-position: right center;
+}
+
+.form-switch-lg .form-check-label {
+    padding-top: 0.25rem;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.switch-label {
+    color: #495057;
+    font-weight: 500;
+}
+
+.form-switch-lg .form-check-input:checked + .form-check-label .switch-label {
+    color: #007bff;
+    font-weight: 600;
+}

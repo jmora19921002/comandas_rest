@@ -1,82 +1,96 @@
-{% extends "base.html" %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="fas fa-print me-2"></i>Gestión de Impresoras</h3>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#impresoraModal">
+        <i class="fas fa-plus me-2"></i>Nueva Impresora
+    </button>
+</div>
 
-{% block content %}
-<!-- Override the navbar to be empty -->
-{% block navbar %}{% endblock %}
-
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Gestión de Impresoras</h2>
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#impresoraModal">
-            <i class="fas fa-plus"></i> Nueva Impresora
-        </button>
-    </div>
-
-    <div class="table-responsive">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Nombre</th>
-                    <th>Tipo</th>
-                    <th>IP</th>
-                    <th>Puerto</th>
-                    <th>Grupos</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for impresora in impresoras %}
-                <tr>
-                    <td>{{ impresora.nombre }}</td>
-                    <td>{{ impresora.tipo }}</td>
-                    <td>{{ impresora.ip or '-' }}</td>
-                    <td>{{ impresora.puerto or '-' }}</td>
-                    <td>
-                        {% if impresora.grupos_ids %}
-                            {% set grupos_list = impresora.grupos_ids.split(',') %}
-                            {% for grupo in grupos %}
-                                {% if grupo.id in grupos_list %}
-                                    <span class="badge bg-info">{{ grupo.nombre }}</span>
-                                {% endif %}
-                            {% endfor %}
-                        {% else %}
-                            <span class="text-muted">Sin grupos asignados</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <span class="badge {% if impresora.estatus == 'activa' %}bg-success{% else %}bg-danger{% endif %}">
-                            {{ impresora.estatus }}
-                        </span>
-                    </td>
-                    <td>
-                        <button class="btn btn-sm btn-warning editar-impresora" 
-                                data-id="{{ impresora.id }}"
-                                data-nombre="{{ impresora.nombre }}"
-                                data-tipo="{{ impresora.tipo }}"
-                                data-ip="{{ impresora.ip }}"
-                                data-puerto="{{ impresora.puerto }}"
-                                data-estatus="{{ impresora.estatus }}"
-                                data-grupos="{{ impresora.grupos_ids }}">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-sm btn-danger eliminar-impresora" data-id="{{ impresora.id }}">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="manager-card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>IP</th>
+                        <th>Puerto</th>
+                        <th>Grupos</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for impresora in impresoras %}
+                    <tr>
+                        <td><strong>{{ impresora.nombre }}</strong></td>
+                        <td>
+                            <span class="badge bg-info">{{ impresora.tipo }}</span>
+                        </td>
+                        <td>{{ impresora.ip or '-' }}</td>
+                        <td>{{ impresora.puerto or '-' }}</td>
+                        <td>
+                            {% if impresora.grupos_ids %}
+                                {% set grupos_list = impresora.grupos_ids.split(',') %}
+                                {% for grupo in grupos %}
+                                    {% if grupo.id in grupos_list %}
+                                        <span class="badge bg-secondary">{{ grupo.nombre }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">Sin grupos asignados</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if impresora.estatus == 'activa' %}bg-success{% else %}bg-danger{% endif %}">
+                                <i class="fas fa-{% if impresora.estatus == 'activa' %}check{% else %}times{% endif %} me-1"></i>
+                                {{ impresora.estatus }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-warning btn-sm editar-impresora" 
+                                        data-id="{{ impresora.id }}"
+                                        data-nombre="{{ impresora.nombre }}"
+                                        data-tipo="{{ impresora.tipo }}"
+                                        data-ip="{{ impresora.ip }}"
+                                        data-puerto="{{ impresora.puerto }}"
+                                        data-estatus="{{ impresora.estatus }}"
+                                        data-grupos="{{ impresora.grupos_ids }}"
+                                        title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm eliminar-impresora" 
+                                        data-id="{{ impresora.id }}"
+                                        title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if not impresoras %}
+        <div class="text-center py-5">
+            <i class="fas fa-print fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No hay impresoras configuradas</h5>
+            <p class="text-muted">Agregue impresoras para poder imprimir tickets y reportes.</p>
+        </div>
+        {% endif %}
     </div>
 </div>
 
 <!-- Modal para crear/editar impresora -->
-<div class="modal fade" id="impresoraModal" tabindex="-1">
+<div class="modal fade manager-modal" id="impresoraModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Nueva Impresora</h5>
+                <h5 class="modal-title">
+                    <i class="fas fa-print me-2"></i>Nueva Impresora
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -140,9 +154,4 @@
             </div>
         </div>
     </div>
-</div>
-
-{% endblock %}
-
-{% block scripts %}
-{% endblock %} 
+</div> 

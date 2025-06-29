@@ -7,16 +7,17 @@
         <input type="hidden" name="is_edit" value="false">
     {% endif %}
     
+    {% if grupo %}
     <div class="mb-3">
         <label for="id" class="form-label">Código</label>
         <input type="text" class="form-control" id="id" name="id" 
-               value="{{ grupo[0] if grupo else '' }}" 
-               {% if grupo %}readonly{% endif %} required>
-        <small class="text-muted">Este será el identificador único del grupo</small>
+               value="{{ grupo[0] }}" readonly>
+        <small class="text-muted">ID del grupo (no editable)</small>
     </div>
+    {% endif %}
     
     <div class="mb-3">
-        <label for="nombre" class="form-label">Nombre</label>
+        <label for="nombre" class="form-label">Nombre <span class="text-danger">*</span></label>
         <input type="text" class="form-control" id="nombre" name="nombre"
                value="{{ grupo[1] if grupo else '' }}" required>
     </div>
@@ -24,7 +25,8 @@
     <div class="mb-3">
         <label for="formato" class="form-label">Formato</label>
         <input type="text" class="form-control" id="formato" name="formato"
-               value="{{ grupo[2] if grupo else '' }}" required>
+               value="{{ grupo[2] if grupo else '' }}">
+        <small class="text-muted">Formato de impresión (opcional)</small>
     </div>
 
     <div class="mb-3">

@@ -1,0 +1,176 @@
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="fas fa-clipboard-list me-2"></i>Gestión de Solicitudes</h3>
+    <div>
+        <button class="btn btn-outline-primary me-2" onclick="refreshSolicitudes()">
+            <i class="fas fa-sync-alt me-2"></i>Actualizar
+        </button>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-secondary" onclick="filterSolicitudes('todas')">
+                Todas
+            </button>
+            <button type="button" class="btn btn-outline-warning" onclick="filterSolicitudes('pendientes')">
+                Pendientes
+            </button>
+            <button type="button" class="btn btn-outline-success" onclick="filterSolicitudes('aprobadas')">
+                Aprobadas
+            </button>
+            <button type="button" class="btn btn-outline-danger" onclick="filterSolicitudes('rechazadas')">
+                Rechazadas
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="total-solicitudes">0</h4>
+                        <p class="mb-0">Total Solicitudes</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-clipboard-list fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="solicitudes-pendientes">0</h4>
+                        <p class="mb-0">Pendientes</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="solicitudes-aprobadas">0</h4>
+                        <p class="mb-0">Aprobadas</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 id="solicitudes-rechazadas">0</h4>
+                        <p class="mb-0">Rechazadas</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-times-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Empresa</th>
+                        <th>Email</th>
+                        <th>RIF</th>
+                        <th>Estatus</th>
+                        <th>Fecha Solicitud</th>
+                        <th>Fecha Revisión</th>
+                        <th>Revisor</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="solicitudes-table-body">
+                    <!-- Contenido cargado dinámicamente -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="no-solicitudes" class="text-center py-5" style="display: none;">
+            <i class="fas fa-clipboard-list fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No hay solicitudes</h5>
+            <p class="text-muted">Las solicitudes aparecerán aquí cuando las empresas se registren.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para ver detalles de solicitud -->
+<div class="modal fade" id="detallesSolicitudModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detalles de la Solicitud</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detalles-solicitud-content">
+                <!-- Contenido cargado dinámicamente -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para aprobar solicitud -->
+<div class="modal fade" id="aprobarSolicitudModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Aprobar Solicitud</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Está seguro de que desea aprobar esta solicitud?</p>
+                <div class="mb-3">
+                    <label for="comentarios-aprobacion" class="form-label">Comentarios (opcional):</label>
+                    <textarea class="form-control" id="comentarios-aprobacion" rows="3" placeholder="Comentarios adicionales..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="confirmarAprobarSolicitud()">Aprobar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para rechazar solicitud -->
+<div class="modal fade" id="rechazarSolicitudModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Rechazar Solicitud</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Está seguro de que desea rechazar esta solicitud?</p>
+                <div class="mb-3">
+                    <label for="comentarios-rechazo" class="form-label">Motivo del rechazo:</label>
+                    <textarea class="form-control" id="comentarios-rechazo" rows="3" placeholder="Explique el motivo del rechazo..." required></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmarRechazarSolicitud()">Rechazar</button>
+            </div>
+        </div>
+    </div>
+</div> 

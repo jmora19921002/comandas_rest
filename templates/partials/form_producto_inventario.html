@@ -20,6 +20,22 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="form-group">
+                                    <label for="grupo_id" class="form-label fw-bold">Grupo</label>
+                                    <select class="form-control form-control-lg" id="grupo_id" name="grupo_id">
+                                        <option value="">Seleccione un grupo (opcional)</option>
+                                        {% for grupo in grupos %}
+                                        <option value="{{ grupo.id }}" {% if producto and producto.grupo_id == grupo.id %}selected{% endif %}>
+                                            {{ grupo.nombre }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <div class="form-group">
                                     <label for="unidad_medida" class="form-label fw-bold">Unidad de Medida *</label>
                                     <select class="form-control form-control-lg" id="unidad_medida" name="unidad_medida" required>
                                         <option value="">Seleccione...</option>
@@ -31,6 +47,15 @@
                                         <option value="docena" {% if producto and producto.unidad_medida == 'docena' %}selected{% endif %}>Docena</option>
                                         <option value="caja" {% if producto and producto.unidad_medida == 'caja' %}selected{% endif %}>Caja</option>
                                         <option value="paquete" {% if producto and producto.unidad_medida == 'paquete' %}selected{% endif %}>Paquete</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="es_receta" class="form-label fw-bold">¿Es Receta?</label>
+                                    <select class="form-control form-control-lg" id="es_receta" name="es_receta">
+                                        <option value="no" {% if producto and producto.es_receta == 'no' %}selected{% endif %}>No</option>
+                                        <option value="si" {% if producto and producto.es_receta == 'si' %}selected{% endif %}>Sí</option>
                                     </select>
                                 </div>
                             </div>
@@ -78,22 +103,34 @@
                         </div>
                         
                         <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label for="es_receta" class="form-label fw-bold">¿Es Receta?</label>
-                                    <select class="form-control form-control-lg" id="es_receta" name="es_receta">
-                                        <option value="no" {% if producto and producto.es_receta == 'no' %}selected{% endif %}>No</option>
-                                        <option value="si" {% if producto and producto.es_receta == 'si' %}selected{% endif %}>Sí</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="form-group">
                                     <label for="estatus" class="form-label fw-bold">Estatus</label>
                                     <select class="form-control form-control-lg" id="estatus" name="estatus">
                                         <option value="activo" {% if producto and producto.estatus == 'activo' %}selected{% endif %}>Activo</option>
                                         <option value="inactivo" {% if producto and producto.estatus == 'inactivo' %}selected{% endif %}>Inactivo</option>
                                     </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="form-label fw-bold d-block">¿Es para Comandar?</label>
+                                    <div class="form-check form-switch form-switch-lg">
+                                        <input class="form-check-input" type="checkbox" id="es_para_comandar" name="es_para_comandar" 
+                                               {% if producto and producto.es_para_comandar == 'si' %}checked{% endif %}>
+                                        <label class="form-check-label" for="es_para_comandar">
+                                            <span class="switch-label">Sí, este producto se puede comandar</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="form-label fw-bold d-block">Configuración</label>
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        Los productos marcados como "para comandar" aparecerán en el sistema de comandas
+                                    </small>
                                 </div>
                             </div>
                         </div>
@@ -158,6 +195,7 @@ $(document).ready(function() {
         
         // Validar campos requeridos
         const nombre = $('#nombre').val().trim();
+        const grupoId = $('#grupo_id').val();
         const unidadMedida = $('#unidad_medida').val();
         const cantidad = parseFloat($('#cantidad_disponible').val());
         const costo = parseFloat($('#costo').val());
@@ -165,7 +203,7 @@ $(document).ready(function() {
         const precioVenta = parseFloat($('#precio_venta').val());
         
         console.log('Datos del formulario:', {
-            nombre, unidadMedida, cantidad, costo, ganancia, precioVenta
+            nombre, grupoId, unidadMedida, cantidad, costo, ganancia, precioVenta
         });
         
         if (!nombre) {
@@ -195,13 +233,15 @@ $(document).ready(function() {
         
         const formData = {
             nombre: nombre,
+            grupo_id: grupoId || null,
             unidad_medida: unidadMedida,
             cantidad_disponible: cantidad,
             costo: costo,
             ganancia: ganancia,
             precio_venta: precioVenta,
             es_receta: $('#es_receta').val(),
-            estatus: $('#estatus').val()
+            estatus: $('#estatus').val(),
+            es_para_comandar: $('#es_para_comandar').is(':checked') ? 'si' : 'no'
         };
         
         console.log('Datos a enviar:', formData);

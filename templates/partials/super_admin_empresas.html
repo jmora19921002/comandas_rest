@@ -1,0 +1,100 @@
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="fas fa-building me-2"></i>Gestión de Empresas</h3>
+    <button class="btn btn-primary" onclick="refreshEmpresas()">
+        <i class="fas fa-sync-alt me-2"></i>Actualizar
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Código</th>
+                        <th>Empresa</th>
+                        <th>Email</th>
+                        <th>RIF</th>
+                        <th>Estatus</th>
+                        <th>Usuarios</th>
+                        <th>Fecha Registro</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="empresas-table-body">
+                    {% for empresa in empresas %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-secondary">{{ empresa.codigo_empresa }}</span>
+                        </td>
+                        <td>
+                            <strong>{{ empresa.nombre_empresa }}</strong>
+                            {% if empresa.telefono %}
+                            <br><small class="text-muted">{{ empresa.telefono }}</small>
+                            {% endif %}
+                        </td>
+                        <td>{{ empresa.email }}</td>
+                        <td>{{ empresa.rif }}</td>
+                        <td>
+                            {% if empresa.estatus == 'activo' %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-check me-1"></i>Activa
+                                </span>
+                            {% elif empresa.estatus == 'en_espera' %}
+                                <span class="badge bg-warning">
+                                    <i class="fas fa-clock me-1"></i>En Espera
+                                </span>
+                            {% else %}
+                                <span class="badge bg-danger">
+                                    <i class="fas fa-times me-1"></i>Inactiva
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-info">{{ empresa.total_usuarios }}</span>
+                        </td>
+                        <td>
+                            <small>{{ empresa.fecha_registro.strftime('%d/%m/%Y %H:%M') if empresa.fecha_registro else 'N/A' }}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                {% if empresa.estatus == 'en_espera' %}
+                                    <button class="btn btn-success btn-sm btn-aprobar" 
+                                            data-empresa-id="{{ empresa.id }}" 
+                                            title="Aprobar">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button class="btn btn-danger btn-sm btn-rechazar" 
+                                            data-empresa-id="{{ empresa.id }}" 
+                                            title="Rechazar">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                {% endif %}
+                                <button class="btn btn-info btn-sm btn-detalles" 
+                                        data-empresa-id="{{ empresa.id }}" 
+                                        title="Ver Detalles">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-warning btn-sm btn-toggle-status" 
+                                        data-empresa-id="{{ empresa.id }}" 
+                                        data-estatus="{{ empresa.estatus }}" 
+                                        title="Cambiar Estatus">
+                                    <i class="fas fa-toggle-on"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if not empresas %}
+        <div class="text-center py-5">
+            <i class="fas fa-building fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No hay empresas registradas</h5>
+            <p class="text-muted">Las empresas aparecerán aquí cuando se registren en el sistema.</p>
+        </div>
+        {% endif %}
+    </div>
+</div> 

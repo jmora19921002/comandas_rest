@@ -15,6 +15,7 @@ from reportlab.lib.units import inch
 from io import BytesIO
 import subprocess
 import platform
+import uuid
 from config import config
 
 def create_app(config_name=None):
@@ -33,8 +34,17 @@ app = create_app()
 # Configuración de sesión
 app.permanent_session_lifetime = timedelta(hours=1)
 
+# Asegurar que SECRET_KEY esté configurada para las sesiones
+if not app.config.get('SECRET_KEY'):
+    app.config['SECRET_KEY'] = 'tu_clave_secreta_aqui_123456'
+    print("🔑 SECRET_KEY configurada para sesiones")
+
+print(f"🔧 Configuración de la aplicación:")
+print(f"   - SECRET_KEY: {'Configurada' if app.config.get('SECRET_KEY') else 'No configurada'}")
+print(f"   - Session lifetime: {app.permanent_session_lifetime}")
+
 def get_db_connection():
-    """Establece conexión con la base de datos Aiven MySQL"""
+    """Establece conexión con la base de datos MySQL local"""
     try:
         conn_params = {
             'host': app.config['MYSQL_HOST'],
@@ -44,17 +54,24 @@ def get_db_connection():
             'database': app.config['MYSQL_DB'],
         }
         
-        # Agregar SSL solo si el archivo ca.pem existe
-        if app.config['MYSQL_SSL_CA'] and os.path.exists(app.config['MYSQL_SSL_CA']):
-            conn_params.update({
-                'ssl_disabled': False,
-                'ssl_ca': app.config['MYSQL_SSL_CA']
-            })
+        # Para MySQL local, no usar SSL
+        if app.config['MYSQL_SSL_CA']:
+            # Si hay configuración SSL (para producción), usarla
+            if os.path.exists(app.config['MYSQL_SSL_CA']):
+                conn_params.update({
+                    'ssl_disabled': False,
+                    'ssl_ca': app.config['MYSQL_SSL_CA']
+                })
+            else:
+                # Para Render, usar SSL sin verificación de certificado
+                conn_params.update({
+                    'ssl_disabled': False,
+                    'ssl_verify_cert': False
+                })
         else:
-            # Para Render, usar SSL sin verificación de certificado
+            # Para MySQL local, deshabilitar SSL completamente
             conn_params.update({
-                'ssl_disabled': False,
-                'ssl_verify_cert': False
+                'ssl_disabled': True
             })
         
         conn = mysql.connector.connect(**conn_params)
@@ -68,9 +85,12 @@ def login_required(f):
     """Decorador para verificar sesión activa"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        print(f"🔍 Login required check - Session: {dict(session)}")  # Debug
         if 'usuario' not in session:
+            print("❌ No hay usuario en sesión")  # Debug
             flash('Debes iniciar sesión para acceder a esta página', 'warning')
             return redirect(url_for('login'))
+        print("✅ Usuario encontrado en sesión")  # Debug
         return f(*args, **kwargs)
     return decorated_function
 
@@ -94,24 +114,43 @@ def soporte_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def super_admin_required(f):
+    """Decorador para verificar rol de super administrador"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        print(f"🔍 Super admin required check - Session: {dict(session)}")  # Debug
+        if 'tipo_usuario' not in session or session['tipo_usuario'] != 'super_admin':
+            print(f"❌ No es super admin - tipo_usuario: {session.get('tipo_usuario', 'No definido')}")  # Debug
+            flash('Acceso restringido: se requieren privilegios de super administrador', 'danger')
+            return redirect(url_for('login'))
+        print("✅ Super admin verificado")  # Debug
+        return f(*args, **kwargs)
+    return decorated_function
+
+def generate_empresa_code():
+    """Genera un código único para la empresa"""
+    return f"EMP{str(uuid.uuid4())[:8].upper()}"
+
 @app.route('/')
 @app.route('/index')
 def index():
     """Redirige al usuario según su estado de autenticación"""
     if 'usuario' in session:
-        if session.get('rol') == 'admin':
+        if session.get('tipo_usuario') == 'super_admin':
+            return redirect(url_for('super_admin_dashboard'))
+        elif session.get('rol') == 'admin':
             return redirect(url_for('manager'))
         return redirect(url_for('mesas'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # Obtener datos de la empresa
+    # Obtener datos de la empresa (para mostrar logo en login público)
     try:
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM empresa LIMIT 1")
+            cursor.execute("SELECT * FROM empresa WHERE estatus = 'activo' LIMIT 1")
             empresa = cursor.fetchone()
             cursor.close()
             conn.close()
@@ -139,53 +178,796 @@ def login():
                 flash('Error de conexión a la base de datos', 'danger')
                 return render_template('login.html', empresa=empresa)
             
-            print(f"Buscando usuario: {user}")  # Debug log
+            # Primero verificar si es un super administrador
             cursor = conn.cursor(dictionary=True)
-            cursor.execute('SELECT * FROM usuario WHERE user = %s', (user,))
-            user_data = cursor.fetchone()
+            cursor.execute('SELECT * FROM super_admin WHERE user = %s', (user,))
+            super_admin_data = cursor.fetchone()
+            
+            if super_admin_data:
+                print(f"Super admin encontrado: {super_admin_data['user']}")  # Debug log
+                
+                # Verificar la contraseña
+                if super_admin_data['password'] == password:
+                    print("Contraseña de super admin correcta")  # Debug log
+                    session['usuario'] = {
+                        'id': super_admin_data['id'],
+                        'nombre_completo': super_admin_data['nombre_completo'],
+                        'usuario': super_admin_data['user']
+                    }
+                    session['tipo_usuario'] = 'super_admin'
+                    session.permanent = True
+                    
+                    # Debug: verificar que la sesión se guardó
+                    print(f"Session después del login: {dict(session)}")
+                    print(f"Session ID: {session.sid if hasattr(session, 'sid') else 'No disponible'}")
+                    
+                    flash('Bienvenido al panel de super administración', 'success')
+                    return redirect(url_for('super_admin_dashboard'))
+                else:
+                    print("Contraseña de super admin incorrecta")  # Debug log
+                    flash('Usuario o contraseña incorrectos', 'danger')
+            else:
+                # Verificar si es un usuario normal
+                print(f"Buscando usuario normal: {user}")  # Debug log
+                cursor.execute('SELECT u.*, e.nombre_empresa, e.estatus as empresa_estatus FROM usuario u LEFT JOIN empresa e ON u.empresa_id = e.id WHERE u.user = %s', (user,))
+                user_data = cursor.fetchone()
+                
+                if user_data:
+                    print(f"Usuario encontrado: {user_data['user']}")  # Debug log
+                    
+                    # Verificar si la empresa está activa
+                    if user_data['empresa_estatus'] != 'activo':
+                        flash('Su empresa no está activa. Contacte al administrador del sistema.', 'warning')
+                        return render_template('login.html', empresa=empresa)
+                    
+                    # Verificar la contraseña directamente (texto plano)
+                    if user_data['password'] == password:
+                        print("Contraseña correcta")  # Debug log
+                        session['usuario'] = {
+                            'id': user_data['id'],
+                            'nombre_completo': user_data['nombre_completo'],
+                            'usuario': user_data['user'],
+                            'empresa_id': user_data['empresa_id'],
+                            'empresa_nombre': user_data['nombre_empresa']
+                        }
+                        session['rol'] = user_data['rol']
+                        session['empresa_id'] = user_data['empresa_id']
+                        session.permanent = True
+                        
+                        # Redirigir según el rol
+                        if user_data['rol'] == 'soporte':
+                            flash('Bienvenido al sistema de soporte', 'success')
+                            return redirect(url_for('manager'))
+                        elif user_data['rol'] == 'admin':
+                            flash('Bienvenido al sistema de administración', 'success')
+                            return redirect(url_for('manager'))
+                        else:
+                            flash('Bienvenido al sistema', 'success')
+                            return redirect(url_for('mesas'))
+                    else:
+                        print("Contraseña incorrecta")  # Debug log
+                        flash('Usuario o contraseña incorrectos', 'danger')
+                else:
+                    print("Usuario no encontrado")  # Debug log
+                    flash('Usuario o contraseña incorrectos', 'danger')
+            
             cursor.close()
             conn.close()
             
-            if user_data:
-                print(f"Usuario encontrado: {user_data['user']}")  # Debug log
-                print(f"Contraseña almacenada: {user_data['password']}")  # Debug log
-                print(f"Contraseña ingresada: {password}")  # Debug log
-                
-                # Verificar la contraseña directamente (texto plano)
-                if user_data['password'] == password:
-                    print("Contraseña correcta")  # Debug log
-                    session['usuario'] = {
-                        'id': user_data['id'],
-                        'nombre_completo': user_data['nombre_completo'],
-                        'usuario': user_data['user']
-                    }
-                    session['rol'] = user_data['rol']
-                    session.permanent = True
-                    
-                    # Redirigir según el rol
-                    if user_data['rol'] == 'soporte':
-                        flash('Bienvenido al sistema de soporte', 'success')
-                        return redirect(url_for('manager'))
-                    elif user_data['rol'] == 'admin':
-                        flash('Bienvenido al sistema de administración', 'success')
-                        return redirect(url_for('manager'))
-                    else:
-                        flash('Bienvenido al sistema', 'success')
-                        return redirect(url_for('mesas'))
-                else:
-                    print("Contraseña incorrecta")  # Debug log
-                    print(f"Contraseña almacenada: {user_data['password']}")  # Debug log
-                    print(f"Contraseña ingresada: {password}")  # Debug log
-                    flash('Usuario o contraseña incorrectos', 'danger')
-            else:
-                print("Usuario no encontrado")  # Debug log
-                flash('Usuario o contraseña incorrectos', 'danger')
         except Exception as e:
             print(f"Error en login: {str(e)}")  # Debug log
             flash(f'Error al intentar iniciar sesión: {str(e)}', 'danger')
             return render_template('login.html', empresa=empresa)
             
     return render_template('login.html', empresa=empresa)
+
+@app.route('/registro/empresa')
+def registro_empresa():
+    """Página de registro de empresa"""
+    return render_template('registro_empresa.html')
+
+@app.route('/api/registro/empresa', methods=['POST'])
+def api_registro_empresa():
+    """API para registrar nueva empresa y usuario administrador"""
+    try:
+        # Obtener datos del formulario
+        nombre_empresa = request.form.get('nombre_empresa')
+        email = request.form.get('email')
+        telefono = request.form.get('telefono')
+        rif = request.form.get('rif')
+        direccion = request.form.get('direccion')
+        
+        # Datos de WhatsApp
+        whatsapp_api_key = request.form.get('whatsapp_api_key')
+        whatsapp_api_url = request.form.get('whatsapp_api_url')
+        whatsapp_phone_number = request.form.get('whatsapp_phone_number')
+        
+        # Datos del usuario administrador
+        admin_nombre = request.form.get('admin_nombre')
+        admin_user = request.form.get('admin_user')
+        admin_password = request.form.get('admin_password')
+        
+        # Validaciones básicas
+        if not all([nombre_empresa, email, telefono, rif, direccion, admin_nombre, admin_user, admin_password]):
+            return jsonify({'success': False, 'message': 'Todos los campos requeridos deben estar completos'}), 400
+        
+        # Manejo del archivo de logo
+        logo = request.files.get('logo')
+        logo_data = None
+        
+        if logo and logo.filename:
+            # Validar tipo de archivo
+            allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif']
+            if logo.content_type not in allowed_types:
+                return jsonify({'success': False, 'message': 'Solo se permiten archivos de imagen (JPEG, PNG, GIF)'}), 400
+            
+            # Validar tamaño del archivo (máximo 5MB)
+            max_size = 5 * 1024 * 1024  # 5MB
+            if logo.content_length and logo.content_length > max_size:
+                return jsonify({'success': False, 'message': 'El archivo es demasiado grande. Máximo 5MB'}), 400
+            
+            try:
+                logo_data = logo.read()
+            except Exception as e:
+                return jsonify({'success': False, 'message': f'Error al procesar el archivo: {str(e)}'}), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor()
+        
+        try:
+            # Verificar si el RIF ya existe
+            cursor.execute('SELECT id FROM empresa WHERE rif = %s', (rif,))
+            if cursor.fetchone():
+                return jsonify({'success': False, 'message': 'El RIF ya está registrado en el sistema'}), 400
+            
+            # Verificar si el email ya existe
+            cursor.execute('SELECT id FROM empresa WHERE email = %s', (email,))
+            if cursor.fetchone():
+                return jsonify({'success': False, 'message': 'El email ya está registrado en el sistema'}), 400
+            
+            # Verificar si el usuario ya existe
+            cursor.execute('SELECT id FROM usuario WHERE user = %s', (admin_user,))
+            if cursor.fetchone():
+                return jsonify({'success': False, 'message': 'El nombre de usuario ya está en uso'}), 400
+            
+            # Generar código único para la empresa
+            codigo_empresa = generate_empresa_code()
+            
+            # Insertar empresa
+            if logo_data:
+                cursor.execute("""
+                    INSERT INTO empresa (codigo_empresa, nombre_empresa, email, telefono, rif, direccion, logo,
+                                       whatsapp_api_key, whatsapp_api_url, whatsapp_phone_number, estatus)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'en_espera')
+                """, (codigo_empresa, nombre_empresa, email, telefono, rif, direccion, logo_data,
+                      whatsapp_api_key, whatsapp_api_url, whatsapp_phone_number))
+            else:
+                cursor.execute("""
+                    INSERT INTO empresa (codigo_empresa, nombre_empresa, email, telefono, rif, direccion,
+                                       whatsapp_api_key, whatsapp_api_url, whatsapp_phone_number, estatus)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'en_espera')
+                """, (codigo_empresa, nombre_empresa, email, telefono, rif, direccion,
+                      whatsapp_api_key, whatsapp_api_url, whatsapp_phone_number))
+            
+            empresa_id = cursor.lastrowid
+            
+            # Insertar usuario administrador
+            cursor.execute("""
+                INSERT INTO usuario (empresa_id, user, password, nombre_completo, rol, estatus)
+                VALUES (%s, %s, %s, %s, 'admin', 'activo')
+            """, (empresa_id, admin_user, admin_password, admin_nombre))
+            
+            usuario_id = cursor.lastrowid
+            
+            # Crear solicitud de registro
+            cursor.execute("""
+                INSERT INTO solicitudes_registro (empresa_id, usuario_id, estatus)
+                VALUES (%s, %s, 'pendiente')
+            """, (empresa_id, usuario_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True, 
+                'message': 'Solicitud de registro enviada exitosamente. Recibirá una notificación cuando sea aprobada.'
+            })
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"Error en registro de empresa: {str(e)}")
+            return jsonify({'success': False, 'message': f'Error al registrar la empresa: {str(e)}'}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error general en registro: {str(e)}")
+        return jsonify({'success': False, 'message': f'Error inesperado: {str(e)}'}), 500
+
+@app.route('/super-admin/dashboard')
+@login_required
+@super_admin_required
+def super_admin_dashboard():
+    """Panel de control para super administradores"""
+    return render_template('super_admin_dashboard.html', usuario=session['usuario'])
+
+@app.route('/super-admin/empresas')
+@login_required
+@super_admin_required
+def super_admin_empresas():
+    """Gestión de empresas para super administradores"""
+    try:
+        print("🔍 Cargando empresas para super admin...")  # Debug
+        conn = get_db_connection()
+        if not conn:
+            print("❌ No se pudo conectar a la base de datos")  # Debug
+            return render_template('partials/super_admin_empresas.html', empresas=[])
+            
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT e.*, 
+                   COALESCE(u_count.total_usuarios, 0) as total_usuarios,
+                   sr.estatus as solicitud_estatus,
+                   sr.fecha_solicitud
+            FROM empresa e
+            LEFT JOIN (
+                SELECT empresa_id, COUNT(*) as total_usuarios 
+                FROM usuario 
+                GROUP BY empresa_id
+            ) u_count ON e.id = u_count.empresa_id
+            LEFT JOIN solicitudes_registro sr ON e.id = sr.empresa_id
+            ORDER BY e.fecha_registro DESC
+        """)
+        empresas = cursor.fetchall()
+        
+        return render_template('partials/super_admin_empresas.html', empresas=empresas)
+        
+    except Error as e:
+        flash(f'Error al cargar empresas: {str(e)}', 'danger')
+        return render_template('partials/super_admin_empresas.html', empresas=[])
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/empresas/<int:empresa_id>/aprobar', methods=['PUT'])
+@login_required
+@super_admin_required
+def aprobar_empresa(empresa_id):
+    """API para aprobar una empresa"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Actualizar estatus de la empresa
+        cursor.execute("""
+            UPDATE empresa 
+            SET estatus = 'activo', 
+                fecha_aprobacion = NOW(), 
+                aprobado_por = %s 
+            WHERE id = %s
+        """, (session['usuario']['id'], empresa_id))
+        
+        # Actualizar estatus de la solicitud
+        cursor.execute("""
+            UPDATE solicitudes_registro 
+            SET estatus = 'aprobada', 
+                fecha_revision = NOW(), 
+                revisado_por = %s 
+            WHERE empresa_id = %s
+        """, (session['usuario']['id'], empresa_id))
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Empresa aprobada exitosamente'})
+        
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': f'Error al aprobar empresa: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/empresas/<int:empresa_id>/rechazar', methods=['PUT'])
+@login_required
+@super_admin_required
+def rechazar_empresa(empresa_id):
+    """API para rechazar una empresa"""
+    try:
+        comentarios = request.json.get('comentarios', '')
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Actualizar estatus de la empresa
+        cursor.execute("""
+            UPDATE empresa 
+            SET estatus = 'inactivo' 
+            WHERE id = %s
+        """, (empresa_id,))
+        
+        # Actualizar estatus de la solicitud
+        cursor.execute("""
+            UPDATE solicitudes_registro 
+            SET estatus = 'rechazada', 
+                fecha_revision = NOW(), 
+                revisado_por = %s,
+                comentarios = %s
+            WHERE empresa_id = %s
+        """, (session['usuario']['id'], comentarios, empresa_id))
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Empresa rechazada exitosamente'})
+        
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': f'Error al rechazar empresa: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/stats')
+@login_required
+@super_admin_required
+def super_admin_stats():
+    """API para obtener estadísticas del super admin"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        # Total de empresas
+        cursor.execute("SELECT COUNT(*) as total FROM empresa")
+        total_empresas = cursor.fetchone()['total']
+        
+        # Empresas pendientes
+        cursor.execute("SELECT COUNT(*) as total FROM empresa WHERE estatus = 'en_espera'")
+        empresas_pendientes = cursor.fetchone()['total']
+        
+        # Empresas activas
+        cursor.execute("SELECT COUNT(*) as total FROM empresa WHERE estatus = 'activo'")
+        empresas_activas = cursor.fetchone()['total']
+        
+        # Empresas inactivas
+        cursor.execute("SELECT COUNT(*) as total FROM empresa WHERE estatus = 'inactivo'")
+        empresas_inactivas = cursor.fetchone()['total']
+        
+        # Total de usuarios
+        cursor.execute("SELECT COUNT(*) as total FROM usuario")
+        total_usuarios = cursor.fetchone()['total']
+        
+        stats = {
+            'total_empresas': total_empresas,
+            'empresas_pendientes': empresas_pendientes,
+            'empresas_activas': empresas_activas,
+            'empresas_inactivas': empresas_inactivas,
+            'total_usuarios': total_usuarios
+        }
+        
+        return jsonify({'success': True, 'stats': stats})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener estadísticas: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/solicitudes/recientes')
+@login_required
+@super_admin_required
+def solicitudes_recientes():
+    """API para obtener solicitudes recientes"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT sr.*, e.nombre_empresa, e.codigo_empresa
+            FROM solicitudes_registro sr
+            JOIN empresa e ON sr.empresa_id = e.id
+            ORDER BY sr.fecha_solicitud DESC
+            LIMIT 10
+        """)
+        
+        solicitudes = cursor.fetchall()
+        
+        # Formatear las fechas
+        for solicitud in solicitudes:
+            if solicitud['fecha_solicitud']:
+                solicitud['fecha_solicitud'] = solicitud['fecha_solicitud'].strftime('%d/%m/%Y %H:%M')
+            if solicitud['fecha_revision']:
+                solicitud['fecha_revision'] = solicitud['fecha_revision'].strftime('%d/%m/%Y %H:%M')
+        
+        return jsonify({'success': True, 'solicitudes': solicitudes})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener solicitudes: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/super-admin/solicitudes')
+@login_required
+@super_admin_required
+def super_admin_solicitudes():
+    """Página de gestión de solicitudes para super administradores"""
+    return render_template('partials/super_admin_solicitudes.html')
+
+@app.route('/api/super-admin/solicitudes')
+@login_required
+@super_admin_required
+def obtener_solicitudes():
+    """API para obtener todas las solicitudes con filtros"""
+    try:
+        estatus = request.args.get('estatus', 'todas')
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        # Construir la consulta base
+        query = """
+            SELECT sr.*, e.nombre_empresa, e.codigo_empresa, e.email, e.rif, e.telefono, e.direccion,
+                   sa.nombre_completo as revisor_nombre
+            FROM solicitudes_registro sr
+            JOIN empresa e ON sr.empresa_id = e.id
+            LEFT JOIN super_admin sa ON sr.revisado_por = sa.id
+        """
+        
+        # Agregar filtro de estatus si es necesario
+        if estatus != 'todas':
+            if estatus == 'pendientes':
+                query += " WHERE sr.estatus = 'pendiente'"
+            elif estatus == 'aprobadas':
+                query += " WHERE sr.estatus = 'aprobada'"
+            elif estatus == 'rechazadas':
+                query += " WHERE sr.estatus = 'rechazada'"
+        
+        query += " ORDER BY sr.fecha_solicitud DESC"
+        
+        cursor.execute(query)
+        solicitudes = cursor.fetchall()
+        
+        # Formatear las fechas
+        for solicitud in solicitudes:
+            if solicitud['fecha_solicitud']:
+                solicitud['fecha_solicitud'] = solicitud['fecha_solicitud'].strftime('%d/%m/%Y %H:%M')
+            if solicitud['fecha_revision']:
+                solicitud['fecha_revision'] = solicitud['fecha_revision'].strftime('%d/%m/%Y %H:%M')
+        
+        return jsonify({'success': True, 'solicitudes': solicitudes})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener solicitudes: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/solicitudes/stats')
+@login_required
+@super_admin_required
+def solicitudes_stats():
+    """API para obtener estadísticas de solicitudes"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        # Total de solicitudes
+        cursor.execute("SELECT COUNT(*) as total FROM solicitudes_registro")
+        total_solicitudes = cursor.fetchone()['total']
+        
+        # Solicitudes pendientes
+        cursor.execute("SELECT COUNT(*) as total FROM solicitudes_registro WHERE estatus = 'pendiente'")
+        solicitudes_pendientes = cursor.fetchone()['total']
+        
+        # Solicitudes aprobadas
+        cursor.execute("SELECT COUNT(*) as total FROM solicitudes_registro WHERE estatus = 'aprobada'")
+        solicitudes_aprobadas = cursor.fetchone()['total']
+        
+        # Solicitudes rechazadas
+        cursor.execute("SELECT COUNT(*) as total FROM solicitudes_registro WHERE estatus = 'rechazada'")
+        solicitudes_rechazadas = cursor.fetchone()['total']
+        
+        stats = {
+            'total_solicitudes': total_solicitudes,
+            'solicitudes_pendientes': solicitudes_pendientes,
+            'solicitudes_aprobadas': solicitudes_aprobadas,
+            'solicitudes_rechazadas': solicitudes_rechazadas
+        }
+        
+        return jsonify({'success': True, 'stats': stats})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener estadísticas: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/solicitudes/<int:solicitud_id>/detalles')
+@login_required
+@super_admin_required
+def detalles_solicitud(solicitud_id):
+    """API para obtener detalles completos de una solicitud"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener información de la solicitud y empresa
+        cursor.execute("""
+            SELECT sr.*, e.*, sa.nombre_completo as revisor_nombre
+            FROM solicitudes_registro sr
+            JOIN empresa e ON sr.empresa_id = e.id
+            LEFT JOIN super_admin sa ON sr.revisado_por = sa.id
+            WHERE sr.id = %s
+        """, (solicitud_id,))
+        
+        solicitud = cursor.fetchone()
+        if not solicitud:
+            return jsonify({'success': False, 'message': 'Solicitud no encontrada'}), 404
+        
+        # Formatear fechas
+        if solicitud['fecha_solicitud']:
+            solicitud['fecha_solicitud'] = solicitud['fecha_solicitud'].strftime('%d/%m/%Y %H:%M')
+        if solicitud['fecha_revision']:
+            solicitud['fecha_revision'] = solicitud['fecha_revision'].strftime('%d/%m/%Y %H:%M')
+        if solicitud['fecha_registro']:
+            solicitud['fecha_registro'] = solicitud['fecha_registro'].strftime('%d/%m/%Y %H:%M')
+        if solicitud['fecha_aprobacion']:
+            solicitud['fecha_aprobacion'] = solicitud['fecha_aprobacion'].strftime('%d/%m/%Y %H:%M')
+        
+        return jsonify({'success': True, 'solicitud': solicitud})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener detalles: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/solicitudes/<int:solicitud_id>/aprobar', methods=['PUT'])
+@login_required
+@super_admin_required
+def aprobar_solicitud(solicitud_id):
+    """API para aprobar una solicitud"""
+    try:
+        comentarios = request.json.get('comentarios', '')
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Obtener el ID de la empresa de la solicitud
+        cursor.execute("SELECT empresa_id FROM solicitudes_registro WHERE id = %s", (solicitud_id,))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'success': False, 'message': 'Solicitud no encontrada'}), 404
+        
+        empresa_id = result[0]
+        
+        # Actualizar estatus de la solicitud
+        cursor.execute("""
+            UPDATE solicitudes_registro 
+            SET estatus = 'aprobada', 
+                fecha_revision = NOW(), 
+                revisado_por = %s,
+                comentarios = %s
+            WHERE id = %s
+        """, (session['usuario']['id'], comentarios, solicitud_id))
+        
+        # Actualizar estatus de la empresa
+        cursor.execute("""
+            UPDATE empresa 
+            SET estatus = 'activo', 
+                fecha_aprobacion = NOW(), 
+                aprobado_por = %s 
+            WHERE id = %s
+        """, (session['usuario']['id'], empresa_id))
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Solicitud aprobada exitosamente'})
+        
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': f'Error al aprobar solicitud: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/solicitudes/<int:solicitud_id>/rechazar', methods=['PUT'])
+@login_required
+@super_admin_required
+def rechazar_solicitud(solicitud_id):
+    """API para rechazar una solicitud"""
+    try:
+        comentarios = request.json.get('comentarios', '')
+        
+        if not comentarios:
+            return jsonify({'success': False, 'message': 'Los comentarios son obligatorios para rechazar una solicitud'}), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Obtener el ID de la empresa de la solicitud
+        cursor.execute("SELECT empresa_id FROM solicitudes_registro WHERE id = %s", (solicitud_id,))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'success': False, 'message': 'Solicitud no encontrada'}), 404
+        
+        empresa_id = result[0]
+        
+        # Actualizar estatus de la solicitud
+        cursor.execute("""
+            UPDATE solicitudes_registro 
+            SET estatus = 'rechazada', 
+                fecha_revision = NOW(), 
+                revisado_por = %s,
+                comentarios = %s
+            WHERE id = %s
+        """, (session['usuario']['id'], comentarios, solicitud_id))
+        
+        # Actualizar estatus de la empresa
+        cursor.execute("""
+            UPDATE empresa 
+            SET estatus = 'inactivo'
+            WHERE id = %s
+        """, (empresa_id,))
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Solicitud rechazada exitosamente'})
+        
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': f'Error al rechazar solicitud: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/empresas/<int:empresa_id>/detalles')
+@login_required
+@super_admin_required
+def detalles_empresa(empresa_id):
+    """API para obtener detalles completos de una empresa"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener información de la empresa
+        cursor.execute("""
+            SELECT e.*, COUNT(u.id) as total_usuarios
+            FROM empresa e
+            LEFT JOIN usuario u ON e.id = u.empresa_id
+            WHERE e.id = %s
+            GROUP BY e.id
+        """, (empresa_id,))
+        
+        empresa = cursor.fetchone()
+        if not empresa:
+            return jsonify({'success': False, 'message': 'Empresa no encontrada'}), 404
+        
+        # Obtener información de la solicitud
+        cursor.execute("""
+            SELECT sr.*, sa.nombre_completo as revisor_nombre
+            FROM solicitudes_registro sr
+            LEFT JOIN super_admin sa ON sr.revisado_por = sa.id
+            WHERE sr.empresa_id = %s
+        """, (empresa_id,))
+        
+        solicitud = cursor.fetchone()
+        
+        # Formatear fechas
+        if empresa['fecha_registro']:
+            empresa['fecha_registro'] = empresa['fecha_registro'].strftime('%d/%m/%Y %H:%M')
+        if empresa['fecha_aprobacion']:
+            empresa['fecha_aprobacion'] = empresa['fecha_aprobacion'].strftime('%d/%m/%Y %H:%M')
+        
+        if solicitud:
+            if solicitud['fecha_solicitud']:
+                solicitud['fecha_solicitud'] = solicitud['fecha_solicitud'].strftime('%d/%m/%Y %H:%M')
+            if solicitud['fecha_revision']:
+                solicitud['fecha_revision'] = solicitud['fecha_revision'].strftime('%d/%m/%Y %H:%M')
+        
+        return jsonify({
+            'success': True, 
+            'empresa': empresa, 
+            'solicitud': solicitud
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al obtener detalles: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/super-admin/empresas/<int:empresa_id>/toggle-status', methods=['PUT'])
+@login_required
+@super_admin_required
+def toggle_empresa_status(empresa_id):
+    """API para cambiar el estatus de una empresa"""
+    try:
+        nuevo_estatus = request.json.get('estatus')
+        if nuevo_estatus not in ['activo', 'inactivo']:
+            return jsonify({'success': False, 'message': 'Estatus inválido'}), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Actualizar estatus de la empresa
+        cursor.execute("""
+            UPDATE empresa 
+            SET estatus = %s,
+                fecha_aprobacion = CASE 
+                    WHEN %s = 'activo' THEN NOW()
+                    ELSE fecha_aprobacion
+                END,
+                aprobado_por = CASE 
+                    WHEN %s = 'activo' THEN %s
+                    ELSE aprobado_por
+                END
+            WHERE id = %s
+        """, (nuevo_estatus, nuevo_estatus, nuevo_estatus, session['usuario']['id'], empresa_id))
+        
+        # Actualizar estatus de la solicitud si existe
+        if nuevo_estatus == 'activo':
+            cursor.execute("""
+                UPDATE solicitudes_registro 
+                SET estatus = 'aprobada', 
+                    fecha_revision = NOW(), 
+                    revisado_por = %s 
+                WHERE empresa_id = %s
+            """, (session['usuario']['id'], empresa_id))
+        elif nuevo_estatus == 'inactivo':
+            cursor.execute("""
+                UPDATE solicitudes_registro 
+                SET estatus = 'rechazada', 
+                    fecha_revision = NOW(), 
+                    revisado_por = %s 
+                WHERE empresa_id = %s
+            """, (session['usuario']['id'], empresa_id))
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': f'Empresa {nuevo_estatus} exitosamente'})
+        
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': f'Error al cambiar estatus: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
 
 @app.route('/logout')
 @login_required
@@ -200,7 +982,24 @@ def logout():
 @login_required
 def manager():
     """Panel de control para administradores y soporte"""
-    return render_template('manager.html', usuario=session['usuario'])
+    # Obtener información de la empresa
+    empresa = None
+    try:
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id, nombre_empresa, email, rif, telefono, estatus
+                FROM empresa 
+                WHERE id = %s
+            """, (session.get('empresa_id'),))
+            empresa = cursor.fetchone()
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        print(f"Error al obtener empresa: {e}")
+    
+    return render_template('manager.html', usuario=session['usuario'], empresa=empresa)
 
 @app.route('/manager/usuarios')
 @login_required
@@ -213,7 +1012,11 @@ def manager_usuarios():
             return render_template('partials/usuarios.html', usuarios=[])
             
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, user, nombre_completo, rol, estatus FROM usuario")
+        cursor.execute("""
+            SELECT id, user, nombre_completo, rol, estatus 
+            FROM usuario 
+            WHERE empresa_id = %s
+        """, (session.get('empresa_id'),))
         usuarios = cursor.fetchall()
         return render_template('partials/usuarios.html', usuarios=usuarios)
         
@@ -235,7 +1038,10 @@ def formulario_usuario():
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM usuario WHERE id = %s", (usuario_id,))
+            cursor.execute("""
+                SELECT * FROM usuario 
+                WHERE id = %s AND empresa_id = %s
+            """, (usuario_id, session.get('empresa_id')))
             usuario = cursor.fetchone()
             cursor.close()
             conn.close()
@@ -250,7 +1056,11 @@ def api_usuarios():
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            cur.execute("SELECT id, user, nombre_completo, estatus, rol FROM usuario")
+            cur.execute("""
+                SELECT id, user, nombre_completo, estatus, rol 
+                FROM usuario 
+                WHERE empresa_id = %s
+            """, (session.get('empresa_id'),))
             usuarios = cur.fetchall()
             return jsonify(usuarios)
         except Exception as e:
@@ -268,9 +1078,9 @@ def api_usuarios():
             # Guardar contraseña en texto plano (sin encriptar)
             print(f"Contraseña en texto plano: {data['password']}")  # Debug
             cur.execute("""
-                INSERT INTO usuario (user, password, nombre_completo, estatus, rol)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (data['user'], data['password'], data['nombre_completo'], data['estatus'], data['rol']))
+                INSERT INTO usuario (empresa_id, user, password, nombre_completo, estatus, rol)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (session.get('empresa_id'), data['user'], data['password'], data['nombre_completo'], data['estatus'], data['rol']))
             conn.commit()
             print("Usuario creado exitosamente")  # Debug
             return jsonify({'success': True, 'message': 'Usuario creado correctamente'})
@@ -299,15 +1109,15 @@ def api_usuario(user_id):
                 cur.execute("""
                     UPDATE usuario 
                     SET user=%s, password=%s, nombre_completo=%s, estatus=%s, rol=%s
-                    WHERE id=%s
-                """, (data['user'], data['password'], data['nombre_completo'], data['estatus'], data['rol'], user_id))
+                    WHERE id=%s AND empresa_id=%s
+                """, (data['user'], data['password'], data['nombre_completo'], data['estatus'], data['rol'], user_id, session.get('empresa_id')))
             else:
                 print("Actualizando usuario sin cambiar contraseña")  # Debug
                 cur.execute("""
                     UPDATE usuario 
                     SET user=%s, nombre_completo=%s, estatus=%s, rol=%s 
-                    WHERE id=%s
-                """, (data['user'], data['nombre_completo'], data['estatus'], data['rol'], user_id))
+                    WHERE id=%s AND empresa_id=%s
+                """, (data['user'], data['nombre_completo'], data['estatus'], data['rol'], user_id, session.get('empresa_id')))
                 
             conn.commit()
             print("Usuario actualizado exitosamente")  # Debug
@@ -324,7 +1134,10 @@ def api_usuario(user_id):
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            cur.execute("DELETE FROM usuario WHERE id = %s", (user_id,))
+            cur.execute("""
+                DELETE FROM usuario 
+                WHERE id = %s AND empresa_id = %s
+            """, (user_id, session.get('empresa_id')))
             conn.commit()
             return jsonify({'success': True, 'message': 'Usuario eliminado correctamente'})
         except Exception as e:
@@ -349,15 +1162,21 @@ def manager_items():
             SELECT i.id, i.nombre, i.precio, i.existencia, i.estatus, g.nombre as grupo 
             FROM item i 
             JOIN grupos g ON i.grupo_codigo = g.id
+            WHERE i.empresa_id = %s
             ORDER BY i.nombre
-        """)
+        """, (session.get('empresa_id'),))
         items = cursor.fetchall()
         
         # Convertir Decimal a float para JSON
         for item in items:
             item['precio'] = float(item['precio'])
         
-        cursor.execute("SELECT id, nombre FROM grupos ORDER BY nombre")
+        cursor.execute("""
+            SELECT id, nombre 
+            FROM grupos 
+            WHERE empresa_id = %s AND estatus = 'activo'
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
         grupos = cursor.fetchall()
         
         return render_template('partials/items.html', items=items, grupos=grupos)
@@ -385,7 +1204,12 @@ def formulario_items():
         cursor = conn.cursor(dictionary=True)
         
         # Obtener grupos para el select
-        cursor.execute("SELECT id, nombre FROM grupos WHERE estatus = 'activo' ORDER BY nombre")
+        cursor.execute("""
+            SELECT id, nombre 
+            FROM grupos 
+            WHERE empresa_id = %s AND estatus = 'activo' 
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
         grupos = cursor.fetchall()
         
         # Si hay ID, obtener el item
@@ -394,8 +1218,8 @@ def formulario_items():
                 SELECT i.*, g.nombre as grupo_nombre 
                 FROM item i 
                 JOIN grupos g ON i.grupo_codigo = g.id 
-                WHERE i.id = %s
-            """, (item_id,))
+                WHERE i.id = %s AND i.empresa_id = %s
+            """, (item_id, session.get('empresa_id')))
             item = cursor.fetchone()
             
             if item:
@@ -419,312 +1243,52 @@ def mesas():
         conn = get_db_connection()
         if not conn:
             flash('Error de conexión a la base de datos', 'danger')
-            return render_template('mesas.html', mesas=[], items=[], grupos=[])
+            return render_template('mesas.html', mesas=[], productos=[], grupos=[])
         
         with conn.cursor(dictionary=True) as cursor:
             # Obtener mesas
-            cursor.execute("SELECT Id as id, nombre, estatus FROM mesas ORDER BY nombre")
+            cursor.execute("""
+                SELECT Id as id, nombre, estatus 
+                FROM mesas 
+                WHERE empresa_id = %s
+                ORDER BY nombre
+            """, (session.get('empresa_id'),))
             mesas = cursor.fetchall()
 
-            # Obtener grupos de items
-            cursor.execute("SELECT id, nombre, estatus FROM grupos WHERE estatus = 'activo' ORDER BY id")
+            # Obtener grupos de productos
+            cursor.execute("""
+                SELECT id, nombre, estatus 
+                FROM grupos 
+                WHERE empresa_id = %s AND estatus = 'activo' 
+                ORDER BY id
+            """, (session.get('empresa_id'),))
             grupos = cursor.fetchall()
             
-            # Obtener items disponibles
+            # Obtener productos disponibles
             cursor.execute("""
-                SELECT i.id, i.nombre, i.precio, i.grupo_codigo, g.nombre as grupo_nombre 
-                FROM item i
-                JOIN grupos g ON i.grupo_codigo = g.id
-                WHERE i.estatus = 'activo' AND i.existencia > 0
-                ORDER BY g.nombre, i.nombre
-            """)
-            items = cursor.fetchall()
+                SELECT p.id, p.nombre, p.precio_venta, p.grupo_id, g.nombre as grupo_nombre 
+                FROM productos p
+                LEFT JOIN grupos g ON p.grupo_id = g.id
+                WHERE p.empresa_id = %s AND p.estatus = 'activo' AND p.cantidad_disponible > 0
+                ORDER BY g.nombre, p.nombre
+            """, (session.get('empresa_id'),))
+            productos = cursor.fetchall()
             
             # Convertir precios Decimal a float
-            for item in items:
-                item['precio'] = float(item['precio'])
+            for producto in productos:
+                producto['precio_venta'] = float(producto['precio_venta'])
             
             return render_template('mesas.html', 
                                 mesas=mesas, 
-                                items=items, 
+                                productos=productos, 
                                 grupos=grupos,
                                 usuario=session.get('usuario'))
-    
-    except Error as err:
-        flash(f'Error al cargar datos: {str(err)}', 'danger')
-        return render_template('mesas.html', mesas=[], items=[], grupos=[])
+                                
+    except Exception as e:
+        flash(f'Error al cargar mesas: {str(e)}', 'danger')
+        return render_template('mesas.html', mesas=[], productos=[], grupos=[])
     finally:
-        if 'conn' in locals() and conn.is_connected():
-            conn.close()
-
-# API PARA COMANDAS - Mejoras sugeridas
-@app.route('/api/comanda', methods=['GET', 'POST'])
-@login_required
-def gestion_comanda():
-    if request.method == 'POST':
-        try:
-            data = request.get_json()
-            mesa_id = data.get('mesa_id')
-            comanda_id = data.get('comanda_id')
-            items = data.get('items', [])
-            servicio = data.get('servicio', 'local')
-            
-            # Debug para verificar la sesión del usuario
-            print(f"Session data: {session}")
-            print(f"Usuario en sesión: {session.get('usuario')}")
-            print(f"Usuario ID: {session.get('usuario', {}).get('id')}")
-            
-            if not mesa_id or not items:
-                return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
-                
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            try:
-                # Inicializar detalles_existentes como diccionario vacío
-                detalles_existentes = {}
-                
-                if comanda_id:
-                    # Actualizar comanda existente
-                    cursor.execute('''
-                        UPDATE comandas 
-                        SET total = %s, servicio = %s
-                        WHERE id = %s
-                    ''', (sum(item['cantidad'] * item['precio'] for item in items), servicio, comanda_id))
-                    
-                    # Obtener los detalles existentes para preservar impreso y cantidad_impresa
-                    cursor.execute('''
-                        SELECT item_id, impreso, cantidad_impresa, estatus
-                        FROM comanda_detalle 
-                        WHERE comanda_id = %s
-                    ''', (comanda_id,))
-                    detalles_existentes = {row[0]: {'impreso': row[1], 'cantidad_impresa': row[2], 'estatus': row[3]} 
-                                        for row in cursor.fetchall()}
-                    
-                    # Eliminar detalles existentes
-                    cursor.execute('DELETE FROM comanda_detalle WHERE comanda_id = %s', (comanda_id,))
-                else:
-                    # Crear nueva comanda
-                    cursor.execute('''
-                        INSERT INTO comandas (mesa_id, total, usuario_id, servicio)
-                        VALUES (%s, %s, %s, %s)
-                    ''', (mesa_id, sum(item['cantidad'] * item['precio'] for item in items), 
-                          session.get('usuario', {}).get('id') or None, servicio))  # Cambiar '' por None
-                    comanda_id = cursor.lastrowid
-                    
-                    # Actualizar estado de la mesa
-                    cursor.execute('UPDATE mesas SET estatus = "ocupada" WHERE id = %s', (mesa_id,))
-                
-                # Insertar nuevos detalles
-                for item in items:
-                    # Preservar impreso y cantidad_impresa si existen
-                    detalle_existente = detalles_existentes.get(item['item_id'], {})
-                    impreso = detalle_existente.get('impreso', None)  # Cambiar '' por None
-                    cantidad_impresa = detalle_existente.get('cantidad_impresa', 0)
-                    estatus = detalle_existente.get('estatus', 'pendiente')
-                    
-                    cursor.execute('''
-                        INSERT INTO comanda_detalle 
-                        (comanda_id, item_id, cantidad, precio_unitario, total, nota, impreso, cantidad_impresa, estatus)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', (comanda_id, item['item_id'], item['cantidad'], 
-                          item['precio'], item['cantidad'] * item['precio'],
-                          item.get('nota', ''), impreso, cantidad_impresa, estatus))
-                
-                conn.commit()
-                return jsonify({'success': True, 'comanda_id': comanda_id})
-                
-            except Exception as e:
-                conn.rollback()
-                raise e
-            finally:
-                cursor.close()
-                conn.close()
-                
-        except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
-            
-    elif request.method == 'GET':
-        mesa_id = request.args.get('mesa_id')
-        if not mesa_id:
-            return jsonify({'success': False, 'error': 'ID de mesa no proporcionado'}), 400
-
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        try:
-            # Obtener comanda activa
-            cursor.execute('''
-                SELECT c.*, m.nombre as mesa_nombre, m.estatus as mesa_estatus, u.nombre_completo as usuario_nombre
-                FROM comandas c 
-                JOIN mesas m ON c.mesa_id = m.id 
-                LEFT JOIN usuario u ON c.usuario_id = u.id
-                WHERE c.mesa_id = %s AND c.estatus = 'pendiente'
-                ORDER BY c.id DESC LIMIT 1
-            ''', (mesa_id,))
-            comanda = cursor.fetchone()
-            
-            print(f"Comanda encontrada: {comanda}")  # Debug
-            
-            if comanda:
-                # Obtener detalles
-                cursor.execute('''
-                    SELECT cd.*, i.nombre, i.grupo_codigo 
-                    FROM comanda_detalle cd 
-                    LEFT JOIN item i ON cd.item_id = i.id
-                    WHERE cd.comanda_id = %s
-                ''', (comanda['id'],))
-                detalles = cursor.fetchall()
-                
-                print(f"Detalles encontrados: {detalles}")  # Debug
-                
-                # Convertir los detalles a un formato más manejable
-                detalles_formateados = []
-                for detalle in detalles:
-                    detalles_formateados.append({
-                        'item_id': detalle['item_id'],
-                        'nombre': detalle['nombre'] or 'Producto sin nombre',
-                        'cantidad': detalle['cantidad'],
-                        'precio': float(detalle['precio_unitario']),
-                        'total': float(detalle['total']),
-                        'grupo_codigo': detalle['grupo_codigo'],
-                        'impreso': detalle['impreso'],
-                        'estatus': detalle['estatus'],
-                        'nota': detalle['nota'],
-                        'cantidad_impresa': detalle['cantidad_impresa'] or 0
-                    })
-                
-                print(f"Detalles formateados: {detalles_formateados}")  # Debug
-                print(f"Usuario de la comanda: {comanda['usuario_nombre']}")  # Debug
-                
-                return jsonify({
-                    'success': True,
-                    'comanda': {
-                        'id': comanda['id'],
-                        'mesa_id': comanda['mesa_id'],
-                        'mesa_nombre': comanda['mesa_nombre'],
-                        'mesa_estatus': comanda['mesa_estatus'],
-                        'total': float(comanda['total']),
-                        'servicio': comanda['servicio'],
-                        'usuario_nombre': comanda['usuario_nombre'] or 'Usuario no especificado'
-                    },
-                    'detalles': detalles_formateados
-                })
-            else:
-                # Si no hay comanda activa, verificar el estado de la mesa
-                cursor.execute('SELECT estatus FROM mesas WHERE id = %s', (mesa_id,))
-                mesa = cursor.fetchone()
-                
-                print(f"Mesa encontrada: {mesa}")  # Debug
-                
-                return jsonify({
-                    'success': True,
-                    'comanda': None,
-                    'detalles': [],
-                    'mesa_estatus': mesa['estatus'] if mesa else 'libre'
-                })
-                
-        except Exception as e:
-            print(f"Error en GET /api/comanda: {str(e)}")  # Debug
-            return jsonify({'success': False, 'error': str(e)}), 500
-        finally:
-            cursor.close()
-            conn.close()
-
-@app.route('/manager/grupos')
-@login_required
-@admin_required
-def manager_grupos():
-    """Gestión de grupos de items (solo admin)"""
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return render_template('partials/grupos.html', grupos=[])
-            
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, nombre FROM grupos ORDER BY nombre")
-        grupos = cursor.fetchall()
-        
-        return render_template('partials/grupos.html', grupos=grupos)
-        
-    except Error as e:
-        flash(f'Error al cargar grupos: {str(e)}', 'danger')
-        return render_template('partials/grupos.html', grupos=[])
-    finally:
-        if 'cursor' in locals(): cursor.close()
         if 'conn' in locals(): conn.close()
-
-@app.route('/api/grupos', methods=['POST'])
-@login_required
-@admin_required
-def crear_grupo():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        data = request.get_json()
-        print("Datos recibidos:", data)  # Debug
-        
-        if not data or not data.get('id') or not data.get('nombre') or not data.get('formato'):
-            return jsonify({'success': False, 'message': 'Datos incompletos'}), 400
-
-        # Verificar si el ID ya existe
-        cursor.execute('SELECT id FROM grupos WHERE id = %s', (data['id'],))
-        if cursor.fetchone():
-            return jsonify({'success': False, 'message': 'El código ya existe'}), 400
-
-        # Insertar nuevo grupo
-        cursor.execute('''
-            INSERT INTO grupos (id, nombre, formato, fecha_creacion, estatus) 
-            VALUES (%s, %s, %s, NOW(), %s)
-        ''', (data['id'], data['nombre'], data['formato'], data.get('estatus', 'activo')))
-        conn.commit()
-        return jsonify({'success': True, 'message': 'Grupo creado correctamente'})
-    except Exception as e:
-        print("Error:", str(e))  # Debug
-        conn.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/api/grupos/<string:grupo_id>', methods=['PUT', 'DELETE'])
-@login_required
-@admin_required
-def gestion_grupo(grupo_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        if request.method == 'PUT':
-            data = request.get_json()
-            if not data or not data.get('nombre') or not data.get('formato'):
-                return jsonify({'success': False, 'message': 'Datos incompletos'}), 400
-
-            # Actualizar grupo
-            cursor.execute('''
-                UPDATE grupos 
-                SET nombre = %s, formato = %s, estatus = %s 
-                WHERE id = %s
-            ''', (data['nombre'], data['formato'], data.get('estatus', 'activo'), grupo_id))
-            conn.commit()
-            return jsonify({'success': True, 'message': 'Grupo actualizado correctamente'})
-
-        elif request.method == 'DELETE':
-            # Verificar si el grupo está en uso
-            cursor.execute('SELECT COUNT(*) FROM item WHERE grupo_codigo = %s', (grupo_id,))
-            if cursor.fetchone()[0] > 0:
-                return jsonify({'success': False, 'message': 'No se puede eliminar el grupo porque tiene items asociados'}), 400
-
-            cursor.execute('DELETE FROM grupos WHERE id = %s', (grupo_id,))
-            conn.commit()
-            return jsonify({'success': True, 'message': 'Grupo eliminado correctamente'})
-
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
 
 @app.route('/formulario/mesas')
 @login_required
@@ -738,7 +1302,10 @@ def formulario_mesas():
         conn = get_db_connection()
         if conn:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM mesas WHERE Id = %s", (mesa_id,))
+            cursor.execute("""
+                SELECT * FROM mesas 
+                WHERE Id = %s AND empresa_id = %s
+            """, (mesa_id, session.get('empresa_id')))
             mesa = cursor.fetchone()
             cursor.close()
             conn.close()
@@ -768,9 +1335,9 @@ def crear_mesa():
 
         # Insertar nueva mesa
         cursor.execute('''
-            INSERT INTO mesas (nombre, estatus) 
-            VALUES (%s, %s)
-        ''', (data['nombre'], data['estatus']))
+            INSERT INTO mesas (empresa_id, nombre, estatus) 
+            VALUES (%s, %s, %s)
+        ''', (session.get('empresa_id'), data['nombre'], data['estatus']))
         conn.commit()
         return jsonify({'success': True, 'message': 'Mesa creada correctamente'})
     except Exception as e:
@@ -803,7 +1370,7 @@ def gestion_mesa(mesa_id):
                 return jsonify({'success': False, 'message': 'El estatus es requerido'}), 400
 
             # Verificar si la mesa existe
-            cursor.execute('SELECT Id FROM mesas WHERE Id = %s', (mesa_id,))
+            cursor.execute('SELECT Id FROM mesas WHERE Id = %s AND empresa_id = %s', (mesa_id, session.get('empresa_id')))
             if not cursor.fetchone():
                 return jsonify({'success': False, 'message': 'La mesa no existe'}), 404
 
@@ -1987,41 +2554,68 @@ def exportar_reporte(tipo):
 @login_required
 def manager_empresa():
     """Gestión de datos de la empresa (admin y soporte)"""
+    print(f"=== INICIO manager_empresa ===")  # Debug
+    print(f"Session data: {dict(session)}")  # Debug
+    print(f"User role: {session.get('rol')}")  # Debug
+    
     if session.get('rol') not in ['admin', 'soporte']:
+        print(f"Error: Usuario sin permisos - rol: {session.get('rol')}")  # Debug
         flash('No tiene permisos para acceder a esta sección', 'danger')
         return redirect(url_for('manager'))
         
-    """Gestión de datos de la empresa (solo admin)"""
     try:
+        print("Conectando a la base de datos...")  # Debug
         conn = get_db_connection()
         if not conn:
+            print("Error: No se pudo conectar a la base de datos")  # Debug
             return render_template('partials/empresa.html', empresa=None)
             
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM empresa LIMIT 1")
         empresa = cursor.fetchone()
         
+        print(f"Empresa obtenida: {empresa is not None}")  # Debug
+        
         return render_template('partials/empresa.html', empresa=empresa)
         
-    except Error as e:
+    except Exception as e:
+        print(f"Error en manager_empresa: {str(e)}")  # Debug
         flash(f'Error al cargar datos de la empresa: {str(e)}', 'danger')
         return render_template('partials/empresa.html', empresa=None)
     finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
+        if 'cursor' in locals(): 
+            cursor.close()
+        if 'conn' in locals(): 
+            conn.close()
 
 @app.route('/manager/dashboard')
 @login_required
 def manager_dashboard():
     """Panel de control para administradores y soporte"""
+    print(f"=== INICIO manager_dashboard ===")  # Debug
+    print(f"Session data: {dict(session)}")  # Debug
+    print(f"User role: {session.get('rol')}")  # Debug
+    
     if session.get('rol') not in ['admin', 'soporte']:
+        print(f"Error: Usuario sin permisos - rol: {session.get('rol')}")  # Debug
         flash('No tiene permisos para acceder a esta sección', 'danger')
         return redirect(url_for('manager'))
         
     try:
+        print("Conectando a la base de datos...")  # Debug
         conn = get_db_connection()
         if not conn:
-            return render_template('partials/dashboard.html', total_ventas_hoy=0, total_ventas_mes=0, top_items=[], ventas_diarias=[])
+            print("Error: No se pudo conectar a la base de datos")  # Debug
+            return render_template('partials/dashboard.html', 
+                                 total_ventas_hoy=0, 
+                                 total_ventas_mes=0, 
+                                 top_items=[], 
+                                 ventas_diarias=[],
+                                 total_comandas=0,
+                                 comandas_activas=0,
+                                 total_items=0,
+                                 total_mesas=0,
+                                 items_populares=[])
             
         cursor = conn.cursor(dictionary=True)
         
@@ -2095,18 +2689,69 @@ def manager_dashboard():
             else:
                 venta['total'] = 0.0
         
+        # Obtener estadísticas adicionales
+        cursor.execute("SELECT COUNT(*) as total FROM comandas")
+        total_comandas = cursor.fetchone()['total']
+        
+        cursor.execute("SELECT COUNT(*) as activas FROM comandas WHERE estatus = 'activa'")
+        comandas_activas = cursor.fetchone()['activas']
+        
+        cursor.execute("SELECT COUNT(*) as total FROM item WHERE estatus = 'activo'")
+        total_items = cursor.fetchone()['total']
+        
+        cursor.execute("SELECT COUNT(*) as total FROM mesas WHERE estatus = 'activo'")
+        total_mesas = cursor.fetchone()['total']
+        
+        # Obtener items populares
+        cursor.execute("""
+            SELECT i.nombre, g.nombre as grupo, COUNT(*) as cantidad
+            FROM comanda_detalle cd
+            JOIN item i ON cd.item_id = i.id
+            LEFT JOIN grupos g ON i.grupo_codigo = g.id
+            JOIN comandas c ON cd.comanda_id = c.id
+            WHERE c.estatus = 'pagada'
+            AND DATE(c.fecha) = CURDATE()
+            GROUP BY i.id, i.nombre, g.nombre
+            ORDER BY cantidad DESC
+            LIMIT 5
+        """)
+        items_populares = cursor.fetchall()
+        
+        print(f"Datos obtenidos exitosamente:")  # Debug
+        print(f"  total_ventas_hoy: {total_ventas_hoy}")
+        print(f"  total_ventas_mes: {total_ventas_mes}")
+        print(f"  top_items: {len(top_items)} items")
+        print(f"  ventas_diarias: {len(ventas_diarias)} días")
+        
         return render_template('partials/dashboard.html', 
                              total_ventas_hoy=total_ventas_hoy,
                              total_ventas_mes=total_ventas_mes,
                              top_items=top_items,
-                             ventas_diarias=ventas_diarias)
+                             ventas_diarias=ventas_diarias,
+                             total_comandas=total_comandas,
+                             comandas_activas=comandas_activas,
+                             total_items=total_items,
+                             total_mesas=total_mesas,
+                             items_populares=items_populares)
         
-    except Error as e:
+    except Exception as e:
+        print(f"Error en manager_dashboard: {str(e)}")  # Debug
         flash(f'Error al cargar el dashboard: {str(e)}', 'danger')
-        return render_template('partials/dashboard.html', total_ventas_hoy=0, total_ventas_mes=0, top_items=[], ventas_diarias=[])
+        return render_template('partials/dashboard.html', 
+                             total_ventas_hoy=0, 
+                             total_ventas_mes=0, 
+                             top_items=[], 
+                             ventas_diarias=[],
+                             total_comandas=0,
+                             comandas_activas=0,
+                             total_items=0,
+                             total_mesas=0,
+                             items_populares=[])
     finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
+        if 'cursor' in locals(): 
+            cursor.close()
+        if 'conn' in locals(): 
+            conn.close()
 
 @app.route('/api/empresa', methods=['POST'])
 @login_required
@@ -3168,8 +3813,9 @@ def manager_inventario_productos():
             SELECT id, nombre, cantidad_disponible, unidad_medida, estatus, 
                    es_receta, costo, ganancia, precio_venta
             FROM productos
+            WHERE empresa_id = %s
             ORDER BY nombre
-        """)
+        """, (session.get('empresa_id'),))
         productos = cursor.fetchall()
         
         # Convertir Decimal a float
@@ -3199,12 +3845,21 @@ def formulario_producto_inventario():
     try:
         conn = get_db_connection()
         if not conn:
-            return render_template('partials/form_producto_inventario.html', producto=None)
+            return render_template('partials/form_producto_inventario.html', producto=None, grupos=[])
             
         cursor = conn.cursor(dictionary=True)
         
+        # Obtener grupos para el select
+        cursor.execute("""
+            SELECT id, nombre 
+            FROM grupos 
+            WHERE empresa_id = %s AND estatus = 'activo' 
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
+        grupos = cursor.fetchall()
+        
         if producto_id:
-            cursor.execute("SELECT * FROM productos WHERE id = %s", (producto_id,))
+            cursor.execute("SELECT * FROM productos WHERE id = %s AND empresa_id = %s", (producto_id, session.get('empresa_id')))
             producto = cursor.fetchone()
             
             if producto:
@@ -3213,11 +3868,11 @@ def formulario_producto_inventario():
                 producto['ganancia'] = float(producto['ganancia']) if producto['ganancia'] else 0.0
                 producto['precio_venta'] = float(producto['precio_venta']) if producto['precio_venta'] else 0.0
         
-        return render_template('partials/form_producto_inventario.html', producto=producto)
+        return render_template('partials/form_producto_inventario.html', producto=producto, grupos=grupos)
         
-    except Error as e:
+    except Exception as e:
         flash(f'Error al cargar formulario: {str(e)}', 'danger')
-        return render_template('partials/form_producto_inventario.html', producto=None)
+        return render_template('partials/form_producto_inventario.html', producto=None, grupos=[])
     finally:
         if 'cursor' in locals(): cursor.close()
         if 'conn' in locals(): conn.close()
@@ -3257,11 +3912,12 @@ def crear_producto_inventario():
         # Insertar nuevo producto
         cursor.execute('''
             INSERT INTO productos (nombre, cantidad_disponible, unidad_medida, estatus, 
-                                 es_receta, costo, ganancia, precio_venta) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                 es_receta, costo, ganancia, precio_venta, empresa_id, grupo_id, es_para_comandar) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (data['nombre'], data['cantidad_disponible'], data['unidad_medida'], 
               data.get('estatus', 'activo'), data.get('es_receta', 'no'),
-              data['costo'], data['ganancia'], data['precio_venta']))
+              data['costo'], data['ganancia'], data['precio_venta'], 
+              session.get('empresa_id'), data.get('grupo_id'), data.get('es_para_comandar', 'no')))
         
         conn.commit()
         return jsonify({'success': True, 'message': 'Producto creado correctamente'})
@@ -3305,29 +3961,30 @@ def gestion_producto_inventario(producto_id):
             if data.get('precio_venta') is None or float(data.get('precio_venta', -1)) < 0:
                 return jsonify({'success': False, 'message': 'El precio de venta no puede ser negativo'}), 400
 
-            # Verificar si el producto existe
-            cursor.execute('SELECT id FROM productos WHERE id = %s', (producto_id,))
+            # Verificar si el producto existe y pertenece a la empresa
+            cursor.execute('SELECT id FROM productos WHERE id = %s AND empresa_id = %s', (producto_id, session.get('empresa_id')))
             if not cursor.fetchone():
-                return jsonify({'success': False, 'message': 'El producto no existe'}), 404
+                return jsonify({'success': False, 'message': 'El producto no existe o no pertenece a su empresa'}), 404
 
             # Actualizar producto
             cursor.execute('''
                 UPDATE productos 
                 SET nombre = %s, cantidad_disponible = %s, unidad_medida = %s, estatus = %s,
-                    es_receta = %s, costo = %s, ganancia = %s, precio_venta = %s 
-                WHERE id = %s
+                    es_receta = %s, costo = %s, ganancia = %s, precio_venta = %s, grupo_id = %s, es_para_comandar = %s
+                WHERE id = %s AND empresa_id = %s
             ''', (data['nombre'], data['cantidad_disponible'], data['unidad_medida'], 
                   data.get('estatus', 'activo'), data.get('es_receta', 'no'),
-                  data['costo'], data['ganancia'], data['precio_venta'], producto_id))
+                  data['costo'], data['ganancia'], data['precio_venta'], 
+                  data.get('grupo_id'), data.get('es_para_comandar', 'no'), producto_id, session.get('empresa_id')))
             
             conn.commit()
             return jsonify({'success': True, 'message': 'Producto actualizado correctamente'})
 
         elif request.method == 'DELETE':
-            # Verificar si el producto existe
-            cursor.execute('SELECT id FROM productos WHERE id = %s', (producto_id,))
+            # Verificar si el producto existe y pertenece a la empresa
+            cursor.execute('SELECT id FROM productos WHERE id = %s AND empresa_id = %s', (producto_id, session.get('empresa_id')))
             if not cursor.fetchone():
-                return jsonify({'success': False, 'message': 'El producto no existe'}), 404
+                return jsonify({'success': False, 'message': 'El producto no existe o no pertenece a su empresa'}), 404
 
             # Verificar si el producto está en uso
             cursor.execute('''
@@ -3337,7 +3994,7 @@ def gestion_producto_inventario(producto_id):
             if cursor.fetchone()[0] > 0:
                 return jsonify({'success': False, 'message': 'No se puede eliminar, el producto está en uso en recetas'}), 400
 
-            cursor.execute('DELETE FROM productos WHERE id = %s', (producto_id,))
+            cursor.execute('DELETE FROM productos WHERE id = %s AND empresa_id = %s', (producto_id, session.get('empresa_id')))
             conn.commit()
             return jsonify({'success': True, 'message': 'Producto eliminado correctamente'})
 
@@ -3462,18 +4119,18 @@ def buscar_productos_compra():
             cursor.execute("""
                 SELECT id, nombre, unidad_medida, cantidad_disponible, costo
                 FROM productos 
-                WHERE nombre LIKE %s AND estatus = 'activo'
+                WHERE nombre LIKE %s AND estatus = 'activo' AND empresa_id = %s
                 ORDER BY nombre
                 LIMIT 20
-            """, (f"%{busqueda}%",))
+            """, (f"%{busqueda}%", session.get('empresa_id')))
         else:
             cursor.execute("""
                 SELECT id, nombre, unidad_medida, cantidad_disponible, costo
                 FROM productos 
-                WHERE estatus = 'activo'
+                WHERE estatus = 'activo' AND empresa_id = %s
                 ORDER BY nombre
                 LIMIT 20
-            """)
+            """, (session.get('empresa_id'),))
         
         productos = cursor.fetchall()
         
@@ -4095,6 +4752,344 @@ def crear_tablas_inventario():
             'success': False, 
             'message': f'Error inesperado: {str(e)}'
         }), 500
+
+# ======================
+# GESTIÓN DE GRUPOS
+# ======================
+
+@app.route('/manager/grupos')
+@login_required
+@admin_required
+def manager_grupos():
+    """Gestión de grupos de items (solo admin)"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return render_template('partials/grupos.html', grupos=[])
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, nombre FROM grupos WHERE empresa_id = %s ORDER BY nombre", (session.get('empresa_id'),))
+        grupos = cursor.fetchall()
+        # Adaptar los campos para la plantilla
+        for grupo in grupos:
+            grupo['codigo'] = grupo['id']
+        return render_template('partials/grupos.html', grupos=grupos)
+    except Exception as e:
+        flash(f'Error al cargar grupos: {str(e)}', 'danger')
+        return render_template('partials/grupos.html', grupos=[])
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/grupos', methods=['POST'])
+@login_required
+@admin_required
+def crear_grupo():
+    """API para crear un nuevo grupo"""
+    try:
+        data = request.get_json()
+        print(f"Datos recibidos para crear grupo: {data}")  # Debug
+        
+        if not data or not data.get('nombre'):
+            return jsonify({'success': False, 'message': 'El nombre es obligatorio'}), 400
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor()
+        
+        # Insertar nuevo grupo (sin especificar id, se genera automáticamente)
+        cursor.execute('''
+            INSERT INTO grupos (empresa_id, nombre, formato, estatus) 
+            VALUES (%s, %s, %s, %s)
+        ''', (session.get('empresa_id'), data['nombre'], data.get('formato', ''), data.get('estatus', 'activo')))
+        
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Grupo creado correctamente'})
+        
+    except Exception as e:
+        print(f"Error al crear grupo: {str(e)}")  # Debug
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/grupos/<string:grupo_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+@admin_required
+def gestion_grupo(grupo_id):
+    """API para obtener, actualizar o eliminar un grupo"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        
+        if request.method == 'GET':
+            # Obtener grupo
+            cursor.execute('SELECT * FROM grupos WHERE id = %s AND empresa_id = %s', (grupo_id, session.get('empresa_id')))
+            grupo = cursor.fetchone()
+            if not grupo:
+                return jsonify({'success': False, 'message': 'Grupo no encontrado'}), 404
+            return jsonify({'success': True, 'grupo': grupo})
+            
+        elif request.method == 'PUT':
+            # Actualizar grupo
+            data = request.get_json()
+            if not data or not data.get('nombre'):
+                return jsonify({'success': False, 'message': 'Datos incompletos'}), 400
+
+            cursor.execute('''
+                UPDATE grupos 
+                SET nombre = %s, formato = %s, estatus = %s 
+                WHERE id = %s AND empresa_id = %s
+            ''', (data['nombre'], data.get('formato', ''), data.get('estatus', 'activo'), grupo_id, session.get('empresa_id')))
+            
+            if cursor.rowcount == 0:
+                return jsonify({'success': False, 'message': 'Grupo no encontrado'}), 404
+                
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Grupo actualizado correctamente'})
+
+        elif request.method == 'DELETE':
+            # Verificar si el grupo está en uso
+            cursor.execute('SELECT COUNT(*) as count FROM item WHERE grupo_codigo = %s AND empresa_id = %s', (grupo_id, session.get('empresa_id')))
+            if cursor.fetchone()['count'] > 0:
+                return jsonify({'success': False, 'message': 'No se puede eliminar el grupo porque tiene items asociados'}), 400
+
+            cursor.execute('DELETE FROM grupos WHERE id = %s AND empresa_id = %s', (grupo_id, session.get('empresa_id')))
+            if cursor.rowcount == 0:
+                return jsonify({'success': False, 'message': 'Grupo no encontrado'}), 404
+                
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Grupo eliminado correctamente'})
+
+    except Exception as e:
+        if 'conn' in locals(): conn.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+# ======================
+# GESTIÓN DE PRODUCTOS (REEMPLAZA ITEMS)
+# ======================
+
+@app.route('/manager/productos')
+@login_required
+@admin_required
+def manager_productos():
+    """Gestión de productos del menú (solo admin)"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return render_template('partials/productos.html', productos=[], grupos=[])
+            
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT p.id, p.nombre, p.precio_venta, p.cantidad_disponible, p.estatus, g.nombre as grupo 
+            FROM productos p 
+            LEFT JOIN grupos g ON p.grupo_id = g.id
+            WHERE p.empresa_id = %s
+            ORDER BY p.nombre
+        """, (session.get('empresa_id'),))
+        productos = cursor.fetchall()
+        
+        # Convertir Decimal a float para JSON
+        for producto in productos:
+            producto['precio_venta'] = float(producto['precio_venta'])
+            producto['cantidad_disponible'] = float(producto['cantidad_disponible'])
+        
+        cursor.execute("""
+            SELECT id, nombre 
+            FROM grupos 
+            WHERE empresa_id = %s AND estatus = 'activo'
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
+        grupos = cursor.fetchall()
+        
+        return render_template('partials/productos.html', productos=productos, grupos=grupos)
+        
+    except Exception as e:
+        flash(f'Error al cargar productos: {str(e)}', 'danger')
+        return render_template('partials/productos.html', productos=[], grupos=[])
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/formulario/productos')
+@login_required
+@admin_required
+def formulario_productos():
+    """Formulario para crear/editar productos"""
+    producto_id = request.args.get('id')
+    producto = None
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return render_template('partials/form_producto.html', producto=None, grupos=[])
+            
+        cursor = conn.cursor(dictionary=True)
+        
+        # Obtener grupos para el select
+        cursor.execute("""
+            SELECT id, nombre 
+            FROM grupos 
+            WHERE empresa_id = %s AND estatus = 'activo' 
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
+        grupos = cursor.fetchall()
+        
+        # Si hay ID, obtener el producto
+        if producto_id:
+            cursor.execute("""
+                SELECT p.*, g.nombre as grupo_nombre 
+                FROM productos p 
+                LEFT JOIN grupos g ON p.grupo_id = g.id 
+                WHERE p.id = %s AND p.empresa_id = %s
+            """, (producto_id, session.get('empresa_id')))
+            producto = cursor.fetchone()
+            
+            if producto:
+                # Convertir Decimal a float para el formulario
+                producto['precio_venta'] = float(producto['precio_venta'])
+                producto['cantidad_disponible'] = float(producto['cantidad_disponible'])
+                producto['costo'] = float(producto['costo'])
+        
+        return render_template('partials/form_producto.html', producto=producto, grupos=grupos)
+        
+    except Exception as e:
+        flash(f'Error al cargar formulario: {str(e)}', 'danger')
+        return render_template('partials/form_producto.html', producto=None, grupos=[])
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/productos', methods=['POST'])
+@login_required
+@admin_required
+def crear_producto():
+    """API para crear nuevo producto"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        data = request.get_json()
+        print("Datos recibidos para crear producto:", data)  # Debug
+        
+        # Validaciones
+        if not data:
+            return jsonify({'success': False, 'message': 'No se recibieron datos'}), 400
+            
+        if not data.get('nombre'):
+            return jsonify({'success': False, 'message': 'El nombre es requerido'}), 400
+            
+        if data.get('precio_venta') is None or float(data.get('precio_venta', 0)) <= 0:
+            return jsonify({'success': False, 'message': 'El precio debe ser mayor a 0'}), 400
+            
+        if data.get('cantidad_disponible') is None or float(data.get('cantidad_disponible', -1)) < 0:
+            return jsonify({'success': False, 'message': 'La cantidad no puede ser negativa'}), 400
+
+        # Insertar nuevo producto
+        cursor.execute('''
+            INSERT INTO productos (nombre, precio_venta, cantidad_disponible, grupo_id, estatus, empresa_id, unidad_medida, costo) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            data['nombre'], 
+            data['precio_venta'], 
+            data.get('cantidad_disponible', 0),
+            data.get('grupo_id'),
+            data.get('estatus', 'activo'),
+            session.get('empresa_id'),
+            data.get('unidad_medida', 'unidad'),
+            data.get('costo', 0)
+        ))
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Producto creado correctamente'})
+    except Exception as e:
+        print("Error al crear producto:", str(e))  # Debug
+        conn.rollback()
+        return jsonify({'success': False, 'message': f'Error al crear el producto: {str(e)}'}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/productos/<int:producto_id>', methods=['PUT', 'DELETE'])
+@login_required
+@admin_required
+def gestion_producto(producto_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if request.method == 'PUT':
+            data = request.get_json()
+            print("Datos recibidos para actualizar producto:", data)  # Debug
+            
+            # Validaciones
+            if not data:
+                return jsonify({'success': False, 'message': 'No se recibieron datos'}), 400
+                
+            if not data.get('nombre'):
+                return jsonify({'success': False, 'message': 'El nombre es requerido'}), 400
+                
+            if data.get('precio_venta') is None or float(data.get('precio_venta', 0)) <= 0:
+                return jsonify({'success': False, 'message': 'El precio debe ser mayor a 0'}), 400
+                
+            if data.get('cantidad_disponible') is None or float(data.get('cantidad_disponible', -1)) < 0:
+                return jsonify({'success': False, 'message': 'La cantidad no puede ser negativa'}), 400
+
+            # Verificar si el producto existe
+            cursor.execute('SELECT id FROM productos WHERE id = %s AND empresa_id = %s', (producto_id, session.get('empresa_id')))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'El producto no existe'}), 404
+
+            # Actualizar producto
+            cursor.execute('''
+                UPDATE productos 
+                SET nombre = %s, precio_venta = %s, cantidad_disponible = %s, grupo_id = %s, estatus = %s, 
+                    unidad_medida = %s, costo = %s
+                WHERE id = %s AND empresa_id = %s
+            ''', (
+                data['nombre'], 
+                data['precio_venta'], 
+                data.get('cantidad_disponible', 0),
+                data.get('grupo_id'),
+                data.get('estatus', 'activo'),
+                data.get('unidad_medida', 'unidad'),
+                data.get('costo', 0),
+                producto_id,
+                session.get('empresa_id')
+            ))
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Producto actualizado correctamente'})
+
+        elif request.method == 'DELETE':
+            # Verificar si el producto existe
+            cursor.execute('SELECT id FROM productos WHERE id = %s AND empresa_id = %s', (producto_id, session.get('empresa_id')))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'El producto no existe'}), 404
+
+            # Verificar si el producto está en uso
+            cursor.execute('''
+                SELECT COUNT(*) FROM comanda_detalle_productos 
+                WHERE producto_id = %s
+            ''', (producto_id,))
+            if cursor.fetchone()[0] > 0:
+                return jsonify({'success': False, 'message': 'No se puede eliminar, el producto tiene comandas asociadas'}), 400
+
+            cursor.execute('DELETE FROM productos WHERE id = %s AND empresa_id = %s', (producto_id, session.get('empresa_id')))
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Producto eliminado correctamente'})
+
+    except Exception as e:
+        print("Error en gestión de producto:", str(e))  # Debug
+        conn.rollback()
+        return jsonify({'success': False, 'message': f'Error en la operación: {str(e)}'}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

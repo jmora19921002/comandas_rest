@@ -123,7 +123,7 @@
     </div>
 </div>
 
-<!-- Modales para cada grupo de items -->
+<!-- Modales para cada grupo de productos -->
 {% for grupo in grupos %}
 <div class="modal fade" id="modalGrupo{{ grupo.id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -134,17 +134,17 @@
             </div>
             <div class="modal-body">
                 <div class="row">
-                    {% for item in items if item.grupo_codigo == grupo.id %}
-                    <div class="col-md-3 mb-3 item-card" data-id="{{ item.id }}" data-name="{{ item.nombre }}" 
-                         data-precio="{{ item.precio }}" data-grupo="{{ item.grupo_codigo }}">
+                    {% for producto in productos if producto.grupo_id == grupo.id %}
+                    <div class="col-md-3 mb-3 producto-card" data-id="{{ producto.id }}" data-name="{{ producto.nombre }}" 
+                         data-precio="{{ producto.precio_venta }}" data-grupo="{{ producto.grupo_id }}">
                         <div class="card">
                             <div class="card-body text-center">
-                                <h5 class="card-title">{{ item.nombre }}</h5>
-                                <p class="card-text">${{ "%.2f"|format(item.precio) }}</p>
+                                <h5 class="card-title">{{ producto.nombre }}</h5>
+                                <p class="card-text">${{ "%.2f"|format(producto.precio_venta) }}</p>
                                 <div class="mb-2">
-                                    <input type="text" class="form-control form-control-sm item-nota" placeholder="Nota (opcional)">
+                                    <input type="text" class="form-control form-control-sm producto-nota" placeholder="Nota (opcional)">
                                 </div>
-                                <button class="btn btn-primary btn-sm agregar-item">Agregar</button>
+                                <button class="btn btn-primary btn-sm agregar-producto">Agregar</button>
                             </div>
                         </div>
                     </div>
@@ -217,10 +217,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Eventos para agregar items desde los modales de grupos
+    // Eventos para agregar productos desde los modales de grupos
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
-            if (e.target.classList.contains('agregar-item')) {
+            if (e.target.classList.contains('agregar-producto')) {
                 if (!comanda.mesa_id) {
                     alert('Por favor seleccione una mesa primero');
                     const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
@@ -228,23 +228,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                const card = e.target.closest('.item-card');
+                const card = e.target.closest('.producto-card');
                 if (card) {
-                    const itemId = parseInt(card.dataset.id);
+                    const productoId = parseInt(card.dataset.id);
                     const nombre = card.dataset.name;
                     const precio = parseFloat(card.dataset.precio);
                     const grupoId = card.dataset.grupo;
                     
-                    console.log('Datos del item:', { itemId, nombre, precio, grupoId }); // Debug
+                    console.log('Datos del producto:', { productoId, nombre, precio, grupoId }); // Debug
                     
-                    if (!itemId || !nombre || isNaN(precio)) {
-                        console.error('Datos inválidos del item:', card.dataset);
+                    if (!productoId || !nombre || isNaN(precio)) {
+                        console.error('Datos inválidos del producto:', card.dataset);
                         return;
                     }
                     
-                    agregarItem(itemId, nombre, precio, grupoId);
+                    agregarProducto(productoId, nombre, precio, grupoId);
                     
-                    // Cerrar el modal después de agregar el item
+                    // Cerrar el modal después de agregar el producto
                     const modalInstance = bootstrap.Modal.getInstance(this);
                     if (modalInstance) {
                         modalInstance.hide();
@@ -638,8 +638,8 @@ function eliminarItem(itemId) {
     actualizarVistaComanda();
 }
 
-function agregarItem(itemId, nombre, precio, grupoId) {
-    console.log('Agregando item:', { itemId, nombre, precio, grupoId }); // Debug
+function agregarProducto(productoId, nombre, precio, grupoId) {
+    console.log('Agregando producto:', { productoId, nombre, precio, grupoId }); // Debug
     
     if (!comanda) {
         comanda = {
@@ -652,34 +652,34 @@ function agregarItem(itemId, nombre, precio, grupoId) {
     }
     
     // Validar datos
-    if (!itemId || !nombre || isNaN(precio)) {
-        console.error('Datos inválidos:', { itemId, nombre, precio, grupoId });
+    if (!productoId || !nombre || isNaN(precio)) {
+        console.error('Datos inválidos:', { productoId, nombre, precio, grupoId });
         return;
     }
     
     // Obtener la nota del input
-    const notaInput = document.querySelector(`.item-card[data-id="${itemId}"] .item-nota`);
+    const notaInput = document.querySelector(`.producto-card[data-id="${productoId}"] .producto-nota`);
     const nota = notaInput ? notaInput.value.trim() : '';
     
-    // Verificar si el item ya existe en la comanda
-    const itemExistente = comanda.items.find(item => item.item_id === itemId);
+    // Verificar si el producto ya existe en la comanda
+    const productoExistente = comanda.items.find(item => item.item_id === productoId);
     
-    if (itemExistente) {
-        itemExistente.cantidad += 1;
+    if (productoExistente) {
+        productoExistente.cantidad += 1;
         if (nota) {
-            itemExistente.nota = nota;
+            productoExistente.nota = nota;
         }
     } else {
-        const nuevoItem = {
-            item_id: itemId,
+        const nuevoProducto = {
+            item_id: productoId,
             nombre: nombre,
             precio: parseFloat(precio),
             cantidad: 1,
             grupo_codigo: grupoId,
             nota: nota
         };
-        console.log('Nuevo item:', nuevoItem); // Debug
-        comanda.items.push(nuevoItem);
+        console.log('Nuevo producto:', nuevoProducto); // Debug
+        comanda.items.push(nuevoProducto);
     }
     
     // Limpiar la nota después de agregar
@@ -689,7 +689,7 @@ function agregarItem(itemId, nombre, precio, grupoId) {
     
     actualizarVistaComanda();
     
-    // Habilitar botones cuando hay items
+    // Habilitar botones cuando hay productos
     document.getElementById('btn-imprimir').disabled = false;
     document.getElementById('btn-totalizar').disabled = false;
     
@@ -711,9 +711,9 @@ function actualizarVistaComanda() {
     detalleComanda.innerHTML = '';
     
     if (!comanda || !comanda.items || comanda.items.length === 0) {
-        detalleComanda.innerHTML = '<tr><td colspan="5" class="text-center">No hay items en la comanda</td></tr>';
+        detalleComanda.innerHTML = '<tr><td colspan="5" class="text-center">No hay productos en la comanda</td></tr>';
         document.getElementById('total-comanda').textContent = '$0.00';
-        // Deshabilitar botones cuando no hay items
+        // Deshabilitar botones cuando no hay productos
         document.getElementById('btn-imprimir').disabled = true;
         document.getElementById('btn-totalizar').disabled = true;
         return;
@@ -721,7 +721,7 @@ function actualizarVistaComanda() {
     
     let total = 0;
     comanda.items.forEach(item => {
-        console.log('Procesando item:', item); // Debug
+        console.log('Procesando producto:', item); // Debug
         
         const itemTotal = (parseFloat(item.precio) || 0) * (parseInt(item.cantidad) || 0);
         total += itemTotal;
@@ -752,7 +752,7 @@ function actualizarVistaComanda() {
     
     document.getElementById('total-comanda').textContent = `$${total.toFixed(2)}`;
     
-    // Habilitar botones cuando hay items
+    // Habilitar botones cuando hay productos
     document.getElementById('btn-imprimir').disabled = false;
     document.getElementById('btn-totalizar').disabled = false;
 }
@@ -784,7 +784,7 @@ function mostrarCarga(buttonId, texto, isLoading = true) {
 // Función para guardar comanda sin limpiar la pantalla
 async function guardarComandaSinLimpiar() {
     if (!comanda || !comanda.items || comanda.items.length === 0) {
-        throw new Error('No hay items en la comanda para guardar.');
+        throw new Error('No hay productos en la comanda para guardar.');
     }
 
     const servicio = document.getElementById('servicio-tipo').value;
@@ -839,7 +839,7 @@ async function guardarComandaSinLimpiar() {
 // Función para guardar comanda (con limpieza de pantalla)
 async function guardarComanda() {
     if (!comanda || !comanda.items || comanda.items.length === 0) {
-        alert('No hay items en la comanda para guardar.');
+        alert('No hay productos en la comanda para guardar.');
         return;
     }
 
@@ -963,7 +963,7 @@ function cerrarComanda() {
 
 async function imprimirComanda(esTotalizacion = false) {
     if (!comanda || !comanda.items || comanda.items.length === 0) {
-        alert('No hay items en la comanda para imprimir.');
+        alert('No hay productos en la comanda para imprimir.');
         return;
     }
 
@@ -986,7 +986,7 @@ async function imprimirComanda(esTotalizacion = false) {
             printerMap[mapping.grupo_id] = mapping.impresora;
         });
 
-        // 3. TERCERO: Filtrar solo los items que necesitan ser impresos
+        // 3. TERCERO: Filtrar solo los productos que necesitan ser impresos
         const itemsToPrint = comanda.items.filter(item => {
             // Si es totalización, imprimir todo
             if (esTotalizacion) return true;
@@ -999,7 +999,7 @@ async function imprimirComanda(esTotalizacion = false) {
         });
 
         if (itemsToPrint.length === 0 && !esTotalizacion) {
-            alert('No hay nuevos items para imprimir.');
+            alert('No hay nuevos productos para imprimir.');
             return;
         }
 
@@ -1040,7 +1040,7 @@ async function imprimirComanda(esTotalizacion = false) {
                 grupo_codigo: grupoId
             };
             
-            console.log('Item a imprimir:', itemData); // Debug
+            console.log('Producto a imprimir:', itemData); // Debug
             itemsGroupedByPrinter[printerKey].items.push(itemData);
             itemsGroupedByPrinter[printerKey].grupos.add(grupoId);
         });
@@ -1145,7 +1145,7 @@ async function imprimirComanda(esTotalizacion = false) {
                     throw new Error(printData.message || 'Error al imprimir el ticket');
                 }
 
-                // Marcar los items como impresos en la interfaz
+                // Marcar los productos como impresos en la interfaz
                 itemsToPrint.forEach(item => {
                     const originalItem = comanda.items.find(i => i.item_id === item.item_id);
                     if (originalItem) {
@@ -1258,7 +1258,7 @@ async function imprimirComanda(esTotalizacion = false) {
 
 async function totalizarComanda() {
     if (!comanda || !comanda.items || comanda.items.length === 0) {
-        alert('No hay items en la comanda para totalizar.');
+        alert('No hay productos en la comanda para totalizar.');
         return;
     }
 
@@ -1385,8 +1385,8 @@ async function totalizarComanda() {
     }
 }
 
-// Función para mostrar el modal de items
-function mostrarModalItems(grupoId) {
+// Función para mostrar el modal de productos
+function mostrarModalProductos(grupoId) {
     console.log('Mostrando modal para grupo:', grupoId); // Debug
     
     const modalId = `modalGrupo${grupoId}`;
@@ -1412,8 +1412,8 @@ function mostrarModalItems(grupoId) {
     });
 }
 
-// Función para cerrar el modal de items
-function cerrarModalItems(grupoId) {
+// Función para cerrar el modal de productos
+function cerrarModalProductos(grupoId) {
     const modalId = `modalGrupo${grupoId}`;
     const modal = document.getElementById(modalId);
     

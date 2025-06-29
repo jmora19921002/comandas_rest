@@ -111,4 +111,269 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+</script>
+
+<!-- Dashboard con estadísticas -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="manager-stats-card">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <h4>{{ total_comandas }}</h4>
+                    <p class="mb-0">Total Comandas</p>
+                </div>
+                <div class="align-self-center">
+                    <i class="fas fa-receipt fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="manager-stats-card" style="background: linear-gradient(135deg, #27ae60 0%, #229954 100%);">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <h4>{{ comandas_activas }}</h4>
+                    <p class="mb-0">Comandas Activas</p>
+                </div>
+                <div class="align-self-center">
+                    <i class="fas fa-clock fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="manager-stats-card" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <h4>{{ total_items }}</h4>
+                    <p class="mb-0">Items Disponibles</p>
+                </div>
+                <div class="align-self-center">
+                    <i class="fas fa-utensils fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="manager-stats-card" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <h4>{{ total_mesas }}</h4>
+                    <p class="mb-0">Mesas</p>
+                </div>
+                <div class="align-self-center">
+                    <i class="fas fa-table fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico de ventas -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="manager-card">
+            <div class="card-header">
+                <h3><i class="fas fa-chart-line me-2"></i>Ventas del Día</h3>
+            </div>
+            <div class="card-body">
+                <canvas id="ventasChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="manager-card">
+            <div class="card-header">
+                <h3><i class="fas fa-list me-2"></i>Items Más Vendidos</h3>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% for item in items_populares %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center border-0">
+                        <div>
+                            <h6 class="mb-1">{{ item.nombre }}</h6>
+                            <small class="text-muted">{{ item.grupo }}</small>
+                        </div>
+                        <span class="manager-badge bg-primary">{{ item.cantidad }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Comandas recientes -->
+<div class="row">
+    <div class="col-12">
+        <div class="manager-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3><i class="fas fa-history me-2"></i>Comandas Recientes</h3>
+                <button class="btn btn-primary manager-btn" onclick="cargarSeccion('comandas')">
+                    <i class="fas fa-eye me-2"></i>Ver Todas
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover manager-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Mesa</th>
+                                <th>Items</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>Fecha</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for comanda in comandas_recientes %}
+                            <tr>
+                                <td><span class="manager-badge bg-secondary">#{{ comanda.id }}</span></td>
+                                <td><strong>{{ comanda.mesa_nombre }}</strong></td>
+                                <td>{{ comanda.total_items }} items</td>
+                                <td><strong>${{ "%.2f"|format(comanda.total) }}</strong></td>
+                                <td>
+                                    {% if comanda.estado == 'activa' %}
+                                        <span class="manager-badge bg-success">
+                                            <i class="fas fa-clock me-1"></i>Activa
+                                        </span>
+                                    {% elif comanda.estado == 'pagada' %}
+                                        <span class="manager-badge bg-primary">
+                                            <i class="fas fa-check me-1"></i>Pagada
+                                        </span>
+                                    {% else %}
+                                        <span class="manager-badge bg-warning">
+                                            <i class="fas fa-exclamation me-1"></i>Pendiente
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ comanda.fecha.strftime('%H:%M') }}</small></td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-info manager-btn" onclick="verDetalleComanda({{ comanda.id }})" title="Ver Detalle">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        {% if comanda.estado == 'activa' %}
+                                        <button class="btn btn-sm btn-success manager-btn" onclick="pagarComanda({{ comanda.id }})" title="Pagar">
+                                            <i class="fas fa-credit-card"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {% if not comandas_recientes %}
+                <div class="text-center py-5">
+                    <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No hay comandas recientes</h5>
+                    <p class="text-muted">Las comandas aparecerán aquí cuando se creen.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Gráfico de ventas
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('ventasChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['6:00', '8:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'],
+            datasets: [{
+                label: 'Ventas ($)',
+                data: [120, 190, 300, 500, 200, 300, 450, 600],
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0,0,0,0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
+});
+
+// Funciones para las acciones
+function verDetalleComanda(comandaId) {
+    fetch(`/api/comandas/${comandaId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const comanda = data.comanda;
+                document.getElementById('comanda-id').textContent = comanda.id;
+                document.getElementById('comanda-mesa').textContent = comanda.mesa_nombre;
+                document.getElementById('comanda-fecha').textContent = new Date(comanda.fecha).toLocaleString();
+                document.getElementById('comanda-total').textContent = `$${comanda.total.toFixed(2)}`;
+                
+                const itemsHtml = comanda.items.map(item => `
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>${item.nombre}</span>
+                        <span class="badge bg-primary">${item.cantidad} x $${item.precio.toFixed(2)}</span>
+                    </div>
+                `).join('');
+                document.getElementById('detalle-comanda-body').innerHTML = itemsHtml;
+                
+                const modal = new bootstrap.Modal(document.getElementById('detalleComandaModal'));
+                modal.show();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            mostrarNotificacion('Error al cargar detalles de la comanda', 'danger');
+        });
+}
+
+function pagarComanda(comandaId) {
+    if (confirm('¿Está seguro de que desea marcar esta comanda como pagada?')) {
+        fetch(`/api/comandas/${comandaId}/pagar`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                mostrarNotificacion('Comanda pagada exitosamente', 'success');
+                // Recargar el dashboard
+                cargarSeccion('dashboard');
+            } else {
+                mostrarNotificacion(data.message || 'Error al pagar comanda', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            mostrarNotificacion('Error de conexión', 'danger');
+        });
+    }
+}
 </script> 

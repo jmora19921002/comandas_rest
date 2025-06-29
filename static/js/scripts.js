@@ -164,83 +164,157 @@ document.addEventListener('click', function(e) {
 });
 
 function mostrarFormularioAgregar(tipo) {
+    console.log('Mostrando formulario para agregar:', tipo); // Debug
+    
     let url = '';
+    let titulo = '';
+    
     switch(tipo) {
-        case 'usuarios':
-            url = '/formulario/usuarios';
-            break;
-        case 'items':
-            url = '/formulario/items';
+        case 'productos':
+            url = '/formulario/productos';
+            titulo = 'Nuevo Producto';
             break;
         case 'grupos':
             url = '/formulario/grupos';
+            titulo = 'Nuevo Grupo';
+            break;
+        case 'usuarios':
+            url = '/formulario/usuarios';
+            titulo = 'Nuevo Usuario';
             break;
         case 'mesas':
             url = '/formulario/mesas';
-            break;
-        case 'impresoras':
-            url = '/formulario/impresoras';
-            break;
-        case 'productos':
-            url = '/formulario/producto';
+            titulo = 'Nueva Mesa';
             break;
         default:
-            url = `/formulario/${tipo}`;
+            console.error('Tipo no reconocido:', tipo);
+            return;
     }
     
-    fetch(url)
-        .then(response => response.text())
+    console.log('URL del formulario:', url); // Debug
+    
+    fetch(url, { credentials: 'same-origin' })
+        .then(response => {
+            console.log('Response status:', response.status); // Debug
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.text();
+        })
         .then(html => {
+            console.log('HTML recibido, longitud:', html.length); // Debug
             document.getElementById('modalBody').innerHTML = html;
-            document.getElementById('modalTitle').textContent = `Nuevo ${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`;
+            document.getElementById('modalTitle').innerHTML = `<i class="fas fa-plus me-2"></i>${titulo}`;
+            
             const modal = new bootstrap.Modal(document.getElementById('formModal'));
             modal.show();
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Error al cargar formulario:', error);
             mostrarNotificacion('Error al cargar el formulario', 'error');
         });
 }
 
 function mostrarFormularioEditar(tipo, id) {
-    const titulo = tipo === 'usuarios' ? 'Editar Usuario' : 
-                  tipo === 'items' ? 'Editar Item' :
-                  tipo === 'grupos' ? 'Editar Grupo' : 'Editar Registro';
+    console.log('Mostrando formulario para editar:', tipo, 'ID:', id); // Debug
     
-    fetch(`/formulario/${tipo}?id=${id}`)
-        .then(response => response.text())
+    let url = '';
+    let titulo = '';
+    
+    switch(tipo) {
+        case 'productos':
+            url = `/formulario/productos?id=${id}`;
+            titulo = 'Editar Producto';
+            break;
+        case 'grupos':
+            url = `/formulario/grupos?id=${id}`;
+            titulo = 'Editar Grupo';
+            break;
+        case 'usuarios':
+            url = `/formulario/usuarios?id=${id}`;
+            titulo = 'Editar Usuario';
+            break;
+        case 'mesas':
+            url = `/formulario/mesas?id=${id}`;
+            titulo = 'Editar Mesa';
+            break;
+        default:
+            console.error('Tipo no reconocido:', tipo);
+            return;
+    }
+    
+    console.log('URL del formulario:', url); // Debug
+    
+    fetch(url, { credentials: 'same-origin' })
+        .then(response => {
+            console.log('Response status:', response.status); // Debug
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.text();
+        })
         .then(html => {
-            document.getElementById('modalTitle').textContent = titulo;
+            console.log('HTML recibido, longitud:', html.length); // Debug
             document.getElementById('modalBody').innerHTML = html;
+            document.getElementById('modalTitle').innerHTML = `<i class="fas fa-edit me-2"></i>${titulo}`;
+            
             const modal = new bootstrap.Modal(document.getElementById('formModal'));
             modal.show();
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Error al cargar formulario:', error);
             mostrarNotificacion('Error al cargar el formulario', 'error');
         });
 }
 
 function confirmarEliminar(tipo, id) {
-    if (confirm('¿Está seguro de eliminar este registro?')) {
-        fetch(`/api/${tipo}/${id}`, { 
+    let mensaje = '';
+    let url = '';
+    
+    switch(tipo) {
+        case 'productos':
+            mensaje = '¿Está seguro de que desea eliminar este producto?';
+            url = `/api/productos/${id}`;
+            break;
+        case 'grupos':
+            mensaje = '¿Está seguro de que desea eliminar este grupo?';
+            url = `/api/grupos/${id}`;
+            break;
+        case 'usuarios':
+            mensaje = '¿Está seguro de que desea eliminar este usuario?';
+            url = `/api/usuarios/${id}`;
+            break;
+        case 'mesas':
+            mensaje = '¿Está seguro de que desea eliminar esta mesa?';
+            url = `/api/mesas/${id}`;
+            break;
+        default:
+            console.error('Tipo no reconocido:', tipo);
+            return;
+    }
+    
+    if (confirm(mensaje)) {
+        fetch(url, {
             method: 'DELETE',
-            headers: {
-                'Accept': 'application/json'
-            }
+            credentials: 'same-origin'
         })
         .then(response => response.json())
-        .then(resultado => {
-            if (resultado.success) {
-                mostrarNotificacion(resultado.message || 'Registro eliminado correctamente');
-                cargarSeccion(tipo);
+        .then(data => {
+            if (data.success) {
+                mostrarNotificacion(data.message, 'success');
+                // Recargar la sección actual
+                const activeLink = document.querySelector('.nav-link.active');
+                if (activeLink) {
+                    const seccion = activeLink.getAttribute('onclick').match(/cargarSeccion\('([^']+)'/)[1];
+                    cargarSeccion(seccion, activeLink);
+                }
             } else {
-                throw new Error(resultado.message || 'Error al eliminar el registro');
+                mostrarNotificacion(data.message, 'error');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            mostrarNotificacion(error.message, 'error');
+            mostrarNotificacion('Error al eliminar el registro', 'error');
         });
     }
 }
@@ -268,10 +342,21 @@ function guardarFormulario() {
 
     console.log('Datos del formulario:', data); // Debug
 
-    // Validaciones específicas para items
-    if (data.tipo === 'items') {
-        if (!data.nombre || !data.grupo_codigo || data.precio <= 0 || data.existencia < 0) {
-            mostrarNotificacion('Por favor complete todos los campos correctamente', 'error');
+    // Determinar si es creación o actualización
+    const isEdit = formData.get('is_edit') === 'true';
+
+    // Validaciones específicas para productos
+    if (data.tipo === 'productos') {
+        if (!data.nombre) {
+            mostrarNotificacion('El nombre del producto es obligatorio', 'error');
+            return;
+        }
+        if (!data.precio_venta || parseFloat(data.precio_venta) <= 0) {
+            mostrarNotificacion('El precio de venta debe ser mayor a 0', 'error');
+            return;
+        }
+        if (data.cantidad_disponible && parseFloat(data.cantidad_disponible) < 0) {
+            mostrarNotificacion('La cantidad disponible no puede ser negativa', 'error');
             return;
         }
     }
@@ -295,16 +380,62 @@ function guardarFormulario() {
 
     // Validaciones específicas para grupos
     if (data.tipo === 'grupos') {
-        if (!data.id || !data.nombre || !data.formato) {
-            mostrarNotificacion('Por favor complete todos los campos requeridos', 'error');
+        if (!data.nombre) {
+            mostrarNotificacion('El nombre del grupo es obligatorio', 'error');
             return;
+        }
+        // Para edición, el id es requerido
+        if (isEdit && !data.id) {
+            mostrarNotificacion('ID del grupo es requerido para edición', 'error');
+            return;
+        }
+        // Para creación, eliminar el id si existe (se generará automáticamente)
+        if (!isEdit && data.id) {
+            delete data.id;
         }
     }
 
-    // Determinar si es creación o actualización
-    const isEdit = formData.get('is_edit') === 'true';
-    const url = isEdit ? `/api/${data.tipo}/${data.id}` : `/api/${data.tipo}`;
-    const method = isEdit ? 'PUT' : 'POST';
+    // Determinar URL y método según el tipo
+    let url = '';
+    let method = 'POST';
+    
+    switch(data.tipo) {
+        case 'productos':
+            if (isEdit) {
+                url = `/api/productos/${data.id}`;
+                method = 'PUT';
+            } else {
+                url = '/api/productos';
+            }
+            break;
+        case 'grupos':
+            if (isEdit) {
+                url = `/api/grupos/${data.id}`;
+                method = 'PUT';
+            } else {
+                url = '/api/grupos';
+            }
+            break;
+        case 'usuarios':
+            if (isEdit) {
+                url = `/api/usuarios/${data.id}`;
+                method = 'PUT';
+            } else {
+                url = '/api/usuarios';
+            }
+            break;
+        case 'mesas':
+            if (isEdit) {
+                url = `/api/mesas/${data.id}`;
+                method = 'PUT';
+            } else {
+                url = '/api/mesas';
+            }
+            break;
+        default:
+            console.error('Tipo no reconocido:', data.tipo);
+            return;
+    }
 
     console.log('Operación:', isEdit ? 'Actualización' : 'Creación');
     console.log('Enviando datos:', { url, method, data }); // Debug
