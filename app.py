@@ -5,8 +5,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from decimal import Decimal
 from functools import wraps
 from datetime import timedelta, datetime
-import win32print
-import win32api
 import tempfile
 import os
 from reportlab.lib import colors
@@ -16,33 +14,53 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from io import BytesIO
 import subprocess
+import platform
+from config import config
 
-app = Flask(__name__)
-app.secret_key = 'tu_clave_secreta_aqui_123456'  # Cambia esto por una clave secreta fuerte
-app.permanent_session_lifetime = timedelta(hours=1)  # La sesión durará 1 hora
+def create_app(config_name=None):
+    """Factory function para crear la aplicación Flask"""
+    if config_name is None:
+        config_name = os.environ.get('FLASK_ENV', 'production')
+    
+    app = Flask(__name__)
+    app.config.from_object(config[config_name])
+    config[config_name].init_app(app)
+    
+    return app
 
-# Configuración de MySQL para Aiven
-app.config['MYSQL_HOST'] = 'comandas-javiersopor9-20f5.j.aivencloud.com'
-app.config['MYSQL_PORT'] = 11906
-app.config['MYSQL_USER'] = 'avnadmin'
-app.config['MYSQL_PASSWORD'] = 'AVNS_00hEQzD6sm3WO-V3bV0'
-app.config['MYSQL_DB'] = 'comandas'
-app.config['MYSQL_SSL_CA'] = os.path.join(os.path.dirname(__file__), 'ca.pem')
+app = create_app()
+
+# Configuración de sesión
+app.permanent_session_lifetime = timedelta(hours=1)
 
 def get_db_connection():
     """Establece conexión con la base de datos Aiven MySQL"""
     try:
-        conn = mysql.connector.connect(
-            host=app.config['MYSQL_HOST'],
-            port=app.config['MYSQL_PORT'],
-            user=app.config['MYSQL_USER'],
-            password=app.config['MYSQL_PASSWORD'],
-            database=app.config['MYSQL_DB'],
-            ssl_disabled=False,
-            ssl_ca=os.path.join(os.path.dirname(__file__), 'ca.pem')
-        )
+        conn_params = {
+            'host': app.config['MYSQL_HOST'],
+            'port': app.config['MYSQL_PORT'],
+            'user': app.config['MYSQL_USER'],
+            'password': app.config['MYSQL_PASSWORD'],
+            'database': app.config['MYSQL_DB'],
+        }
+        
+        # Agregar SSL solo si el archivo ca.pem existe
+        if app.config['MYSQL_SSL_CA'] and os.path.exists(app.config['MYSQL_SSL_CA']):
+            conn_params.update({
+                'ssl_disabled': False,
+                'ssl_ca': app.config['MYSQL_SSL_CA']
+            })
+        else:
+            # Para Render, usar SSL sin verificación de certificado
+            conn_params.update({
+                'ssl_disabled': False,
+                'ssl_verify_cert': False
+            })
+        
+        conn = mysql.connector.connect(**conn_params)
         return conn
     except Error as e:
+        print(f'Error al conectar a la base de datos: {str(e)}')
         flash(f'Error al conectar a la base de datos: {str(e)}', 'danger')
         return None
 
@@ -1413,13 +1431,17 @@ def gestion_impresora(impresora_id):
 def get_windows_printers():
     """API para obtener la lista de impresoras de Windows"""
     try:
-        import win32print
-        printers = []
-        for printer in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS):
-            printers.append(printer[2])  # printer[2] contiene el nombre de la impresora
-        return jsonify(printers)
+        if platform.system() == 'Windows':
+            import win32print
+            printers = []
+            for printer in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS):
+                printers.append(printer[2])  # printer[2] contiene el nombre de la impresora
+            return jsonify(printers)
+        else:
+            # En Linux, devolver lista vacía o usar CUPS
+            return jsonify([])
     except Exception as e:
-        print("Error al obtener impresoras de Windows:", str(e))  # Debug
+        print("Error al obtener impresoras:", str(e))  # Debug
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/printer_mappings')
@@ -1567,22 +1589,28 @@ def enviar_a_impresora(texto, ip, puerto):
 def imprimir_en_windows(printer_name, text_content):
     """Envía contenido de texto a una impresora de Windows."""
     try:
-        import win32print
-        print(f"DEBUG: Enviando a impresora de Windows ({printer_name}):\n{text_content}") # Debug
-        hPrinter = win32print.OpenPrinter(printer_name)
-        try:
-            # Start a print job
-            job = win32print.StartDocPrinter(hPrinter, 1, ("Comanda", None, "RAW"))
-            win32print.StartPagePrinter(hPrinter)
-            win32print.WritePrinter(hPrinter, text_content.encode('utf-8'))
-            win32print.EndPagePrinter(hPrinter)
-            win32print.EndDocPrinter(hPrinter)
-            print(f"Impresión enviada a {printer_name} exitosamente.")
+        if platform.system() == 'Windows':
+            import win32print
+            print(f"DEBUG: Enviando a impresora de Windows ({printer_name}):\n{text_content}") # Debug
+            hPrinter = win32print.OpenPrinter(printer_name)
+            try:
+                # Start a print job
+                job = win32print.StartDocPrinter(hPrinter, 1, ("Comanda", None, "RAW"))
+                win32print.StartPagePrinter(hPrinter)
+                win32print.WritePrinter(hPrinter, text_content.encode('utf-8'))
+                win32print.EndPagePrinter(hPrinter)
+                win32print.EndDocPrinter(hPrinter)
+                print(f"Impresión enviada a {printer_name} exitosamente.")
+                return True
+            finally:
+                win32print.ClosePrinter(hPrinter)
+        else:
+            # En Linux, usar CUPS o simplemente log
+            print(f"DEBUG: Enviando a impresora en Linux ({printer_name}):\n{text_content}")
+            # Aquí podrías implementar impresión con CUPS si es necesario
             return True
-        finally:
-            win32print.ClosePrinter(hPrinter)
     except Exception as e:
-        print(f"Error al imprimir en impresora de Windows {printer_name}: {e}")
+        print(f"Error al imprimir en impresora {printer_name}: {e}")
         return False
 
 def actualizar_estado_impresion(comanda_id, items_impresos):
@@ -4069,4 +4097,5 @@ def crear_tablas_inventario():
         }), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

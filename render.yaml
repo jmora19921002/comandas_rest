@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: comandas-rest
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: false
+      - key: MYSQL_HOST
+        value: comandas-javiersopor9-20f5.j.aivencloud.com
+      - key: MYSQL_PORT
+        value: 11906
+      - key: MYSQL_USER
+        value: avnadmin
+      - key: MYSQL_PASSWORD
+        value: AVNS_00hEQzD6sm3WO-V3bV0
+      - key: MYSQL_DB
+        value: comandas
+      - key: SECRET_KEY
+        generateValue: true
+    healthCheckPath: /
+    autoDeploy: true 
