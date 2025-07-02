@@ -1,5 +1,34 @@
 console.log('scripts.js loaded and executing.'); // Debug para confirmar carga
 
+// Manejador global para cerrar modales correctamente
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (Swal.isVisible()) {
+            Swal.close();
+            limpiarBackdropSweetAlert();
+        }
+    }
+});
+
+// Limpiar modales al hacer clic fuera de ellos
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('swal2-backdrop-show')) {
+        Swal.close();
+        limpiarBackdropSweetAlert();
+    }
+});
+
+function limpiarBackdropSweetAlert() {
+    // Elimina el backdrop si existe
+    document.querySelectorAll('.swal2-container, .swal2-backdrop-show, .swal2-shown').forEach(el => {
+        el.classList.remove('swal2-backdrop-show', 'swal2-shown');
+    });
+    // Habilita el scroll del body
+    document.body.classList.remove('swal2-shown', 'swal2-height-auto');
+    document.documentElement.classList.remove('swal2-shown', 'swal2-height-auto');
+    document.body.style.overflow = '';
+}
+
 function actualizarDetalleComanda() {
     const tbody = document.getElementById('detalle-comanda');
     tbody.innerHTML = '';
@@ -34,23 +63,27 @@ function calcularTotal() {
 
 // Funciones para el manager
 function cargarSeccion(seccion, link = null) {
-    // Actualizar clase activa en el menú
+    console.log('Cargando sección:', seccion); // Debug
+    
+    // Actualizar navegación activa
     document.querySelectorAll('.nav-link').forEach(navLink => {
         navLink.classList.remove('active');
     });
+    
     if (link) {
         link.classList.add('active');
     }
 
-    // Cerrar sidebar en móviles después de seleccionar una sección
-    if (window.innerWidth <= 768) {
-        toggleSidebar();
+    // Si estamos en la página de mesas, no intentar cargar secciones
+    if (window.location.pathname === '/mesas') {
+        console.log('Estamos en la página de mesas, no cargando sección');
+        return;
     }
 
     // Mostrar indicador de carga
     const contenidoSeccion = document.getElementById('contenido-seccion');
     if (!contenidoSeccion) {
-        console.error('No se encontró el elemento #contenido-seccion');
+        console.log('No se encontró el elemento #contenido-seccion - probablemente estamos en una página específica');
         return;
     }
 
@@ -530,7 +563,32 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('modalBody').innerHTML = '';
         });
     }
+
+    // Setea la fecha de hoy por defecto
+    const inputFecha = document.getElementById('fecha-cierre-dia');
+    if (inputFecha) {
+        inputFecha.value = new Date().toISOString().slice(0, 10);
+    }
+
+    // Event listener del botón de cierre diario movido a mesas.js para evitar conflictos
+    // const btnCierre = document.getElementById('btn-cierre-dia');
+    // if (btnCierre) {
+    //     btnCierre.onclick = function() {
+    //         const fecha = inputFecha.value;
+    //         fetch(`/api/facturas/reporte-dia?fecha=${fecha}`)
+    //             .then(res => res.json())
+    //             .then(data => {
+    //                 if (data.success) {
+    //                     mostrarModalCierreDia(data.facturas, data.fecha);
+    //                 } else {
+    //                     Swal.fire('Error', data.error, 'error');
+    //                 }
+    //             });
+    //     };
+    // }
 });
+
+// Función de cierre diario movida a mesas.js para evitar conflictos
 
 // Variables globales para comandas
 window.comandaActual = null;

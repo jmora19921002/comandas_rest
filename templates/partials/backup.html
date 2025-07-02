@@ -90,6 +90,32 @@
             </div>
         </div>
     </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Corregir Estructura de Pagos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Importante:</strong> Esta función corrige la estructura de la tabla pagos_factura para que referencie correctamente la tabla facturas en lugar de comandas. 
+                        Esto es necesario para que el sistema de pagos funcione correctamente.
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-warning" onclick="corregirEstructuraPagosFactura()">
+                            <i class="bi bi-wrench"></i> Corregir Estructura de Pagos
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -275,6 +301,29 @@ function limpiarRegistrosProblematicos() {
         .catch(error => {
             console.error('Error:', error);
             mostrarNotificacion('Error al limpiar los registros', 'error');
+        });
+    }
+}
+
+function corregirEstructuraPagosFactura() {
+    if (confirm('¿Está seguro de que desea corregir la estructura de la tabla pagos_factura? Esta operación eliminará la restricción incorrecta y creará la correcta.')) {
+        fetch('/api/corregir-estructura-pagos-factura', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                mostrarNotificacion(data.message, 'success');
+            } else {
+                mostrarNotificacion(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            mostrarNotificacion('Error al corregir la estructura', 'error');
         });
     }
 }

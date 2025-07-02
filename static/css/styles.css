@@ -1231,3 +1231,182 @@ body {
     color: #007bff;
     font-weight: 600;
 }
+
+/* Estilos para el resumen por medio de pago */
+.cierre-diario-modal .card-header.bg-info {
+    background-color: #17a2b8 !important;
+}
+
+.cierre-diario-modal .border.rounded {
+    border-color: #dee2e6 !important;
+    transition: all 0.2s ease;
+}
+
+.cierre-diario-modal .border.rounded:hover {
+    border-color: #007bff !important;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.2);
+}
+
+.cierre-diario-modal .fw-bold {
+    font-weight: 600 !important;
+}
+
+/* Estilos para el modal del cierre diario */
+.cierre-diario-modal .swal2-popup {
+    max-width: 1200px !important;
+    width: 95% !important;
+}
+
+.cierre-diario-modal .swal2-content {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.cierre-diario-modal .table {
+    font-size: 0.9rem;
+}
+
+.cierre-diario-modal .table th {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cierre-diario-modal .table td {
+    vertical-align: middle;
+    padding: 0.5rem;
+}
+
+.cierre-diario-modal .badge {
+    font-size: 0.75rem;
+    padding: 0.35em 0.65em;
+}
+
+.cierre-diario-modal .card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.cierre-diario-modal .card-body {
+    padding: 1rem;
+}
+
+.cierre-diario-modal .text-success {
+    color: #28a745 !important;
+}
+
+.cierre-diario-modal .text-primary {
+    color: #007bff !important;
+}
+
+.cierre-diario-modal .text-warning {
+    color: #ffc107 !important;
+}
+
+.cierre-diario-modal .text-info {
+    color: #17a2b8 !important;
+}
+
+.cierre-diario-modal .text-secondary {
+    color: #6c757d !important;
+}
+
+.cierre-diario-modal .text-muted {
+    color: #6c757d !important;
+}
+
+/* Estilos para impresión */
+@media print {
+    .cierre-diario-modal .swal2-popup {
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    .cierre-diario-modal .btn {
+        display: none !important;
+    }
+    
+    .cierre-diario-modal .table {
+        font-size: 0.8rem;
+    }
+    
+    .cierre-diario-modal .card {
+        box-shadow: none !important;
+        border: 1px solid #dee2e6 !important;
+    }
+}
+
+/* Animaciones para el modal */
+.cierre-diario-modal .swal2-popup {
+    animation: slideInDown 0.3s ease-out;
+}
+
+@keyframes slideInDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Estilos para las filas de la tabla */
+.cierre-diario-modal .table-hover tbody tr:hover {
+    background-color: rgba(0,123,255,0.05);
+    transition: background-color 0.2s ease;
+}
+
+/* Estilos para los badges de estatus */
+.cierre-diario-modal .badge.bg-success {
+    background-color: #28a745 !important;
+}
+
+.cierre-diario-modal .badge.bg-danger {
+    background-color: #dc3545 !important;
+}
+
+.cierre-diario-modal .badge.bg-primary {
+    background-color: #007bff !important;
+}
+
+.cierre-diario-modal .badge.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+.cierre-diario-modal .badge.bg-dark {
+    background-color: #343a40 !important;
+}
+
+/* Estilos para el footer de la tabla */
+.cierre-diario-modal .table-dark {
+    background-color: #343a40 !important;
+}
+
+.cierre-diario-modal .table-dark th,
+.cierre-diario-modal .table-dark td {
+    border-color: #454d55 !important;
+}
+
+/* Responsive design para el modal */
+@media (max-width: 768px) {
+    .cierre-diario-modal .swal2-popup {
+        width: 98% !important;
+        margin: 10px !important;
+    }
+    
+    .cierre-diario-modal .table {
+        font-size: 0.8rem;
+    }
+    
+    .cierre-diario-modal .table th,
+    .cierre-diario-modal .table td {
+        padding: 0.3rem;
+    }
+    
+    .cierre-diario-modal .card-body {
+        padding: 0.75rem;
+    }
+}

@@ -1312,6 +1312,33 @@ def formulario_mesas():
     
     return render_template('partials/form_mesas.html', mesa=mesa)
 
+@app.route('/api/mesas', methods=['GET'])
+@login_required
+def obtener_mesas():
+    """API para obtener todas las mesas"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT Id as id, nombre, estatus 
+            FROM mesas 
+            WHERE empresa_id = %s
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
+        mesas = cursor.fetchall()
+        
+        return jsonify(mesas)
+        
+    except Exception as e:
+        print("Error al obtener mesas:", str(e))
+        return jsonify({'success': False, 'message': f'Error al obtener mesas: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
 @app.route('/api/mesas', methods=['POST'])
 @login_required
 @admin_required
@@ -1577,7 +1604,7 @@ def manager_ventas():
             total_detalles = cursor.fetchone()['total']
             print(f"Total de detalles en BD: {total_detalles}")  # Debug
             
-            cursor.execute("SELECT COUNT(*) as total FROM item")
+            cursor.execute("SELECT COUNT(*) as total FROM productos")
             total_items = cursor.fetchone()['total']
             print(f"Total de items en BD: {total_items}")  # Debug
             
@@ -1586,9 +1613,9 @@ def manager_ventas():
             print(f"Estatus de comandas: {estatus_comandas}")  # Debug
             
             query = """
-                SELECT i.nombre as item, SUM(d.cantidad) as cantidad, SUM(d.total) as total
+                SELECT p.nombre as item, SUM(d.cantidad) as cantidad, SUM(d.total) as total
                 FROM comanda_detalle d
-                JOIN item i ON d.item_id = i.id
+                JOIN productos p ON d.producto_id = p.id
                 JOIN comandas c ON d.comanda_id = c.id
                 WHERE c.estatus = 'pagada'
             """
@@ -1605,7 +1632,7 @@ def manager_ventas():
                 query += " AND c.fecha <= %s"
                 params.append(fecha_fin + " 23:59:59")
                 
-            query += " GROUP BY i.nombre ORDER BY total DESC"
+            query += " GROUP BY p.nombre ORDER BY total DESC"
             
             print(f"Query final: {query}")  # Debug
             print(f"Params: {params}")  # Debug
@@ -1704,9 +1731,9 @@ def obtener_comanda(comanda_id):
             return jsonify({'error': 'Comanda no encontrada'}), 404
             
         cursor.execute("""
-            SELECT i.nombre as item_nombre, d.cantidad, d.precio_unitario, d.total
+            SELECT p.nombre as item_nombre, d.cantidad, d.precio_unitario, d.total
             FROM comanda_detalle d
-            JOIN item i ON d.item_id = i.id
+            JOIN productos p ON d.producto_id = p.id
             WHERE d.comanda_id = %s
         """, (comanda_id,))
         detalles = cursor.fetchall()
@@ -1732,41 +1759,189 @@ def obtener_comanda(comanda_id):
         cursor.close()
         conn.close()
 
-@app.route('/api/comandas/<int:comanda_id>/pagar', methods=['PUT'])
+@app.route('/api/comandas/<int:comanda_id>/pagar', methods=['POST'])
 @login_required
-def pagar_comanda(comanda_id):
+def procesar_pago_comanda(comanda_id):
+    """Procesar pago de una comanda y facturar automáticamente si corresponde"""
+    data = request.json
     conn = get_db_connection()
     cursor = conn.cursor()
-    
     try:
-        # Obtener la comanda y la mesa
-        cursor.execute('''
-            SELECT c.id, c.mesa_id, c.total, c.estatus, m.id as mesa_id 
-            FROM comandas c 
-            JOIN mesas m ON c.mesa_id = m.id 
-            WHERE c.id = %s
-        ''', (comanda_id,))
+        print(f"🔍 Procesando pago para comanda {comanda_id}")
+        print(f"📊 Datos recibidos: {data}")
+        # Verificar que la comanda existe y pertenece a la empresa
+        cursor.execute("""
+            SELECT id, total, estatus_pago 
+            FROM comandas 
+            WHERE id = %s AND empresa_id = %s
+        """, (comanda_id, session.get('empresa_id')))
         comanda = cursor.fetchone()
-        
         if not comanda:
-            return jsonify({'error': 'Comanda no encontrada'}), 404
+            return jsonify({'success': False, 'error': 'Comanda no encontrada'}), 404
+        print(f"📋 Comanda encontrada: ID={comanda[0]}, Total={comanda[1]} (tipo: {type(comanda[1])}), Estatus={comanda[2]}")
+        if comanda[2] == 'pagado':
+            return jsonify({'success': False, 'error': 'La comanda ya está pagada'}), 400
+        pagos = data.get('pagos', [])
+        estatus_pago = data.get('estatus_pago', 'pagado')
+        print(f"💳 Pagos a procesar: {pagos}")
+        print(f"🏷️ Estatus de pago: {estatus_pago}")
+        # Calcular total de pagos
+        total_pagado = sum(pago.get('monto', 0) for pago in pagos)
+        print(f"💰 Total pagado: {total_pagado} (tipo: {type(total_pagado)})")
+        total_comanda = float(comanda[1]) if comanda[1] is not None else 0.0
+        print(f"📊 Total comanda convertido: {total_comanda} (tipo: {type(total_comanda)})")
+        if estatus_pago == 'pagado':
+            diferencia = abs(total_pagado - total_comanda)
+            print(f"🔍 Diferencia: {diferencia}")
+            if diferencia > 0.01:
+                return jsonify({'success': False, 'error': f'El total pagado (${total_pagado:.2f}) no coincide con el total de la comanda (${total_comanda:.2f})'}), 400
+        print("✅ Validaciones pasadas, procediendo a crear factura...")
+
+        # === CONTROL DE INVENTARIO ===
+        empresa_id = session.get('empresa_id')
+        # Obtener los productos reales y cantidades de la comanda
+        cursor.execute('''
+            SELECT d.producto_id, d.cantidad
+            FROM comanda_detalle d
+            JOIN productos p ON d.producto_id = p.id
+            WHERE d.comanda_id = %s
+        ''', (comanda_id,))
+        productos_comanda = cursor.fetchall()
+        productos_sin_stock = []
+        for det in productos_comanda:
+            producto_id = det[0]
+            cantidad_necesaria = float(det[1])
+            cursor.execute("SELECT cantidad_disponible, nombre FROM productos WHERE id = %s AND empresa_id = %s", (producto_id, empresa_id))
+            prod = cursor.fetchone()
+            if not prod or float(prod[0]) < cantidad_necesaria:
+                productos_sin_stock.append(prod[1] if prod else f'ID {producto_id}')
+        if productos_sin_stock:
+            return jsonify({'success': False, 'error': f"Stock insuficiente para: {', '.join(productos_sin_stock)}"}), 400
+        # Descontar stock
+        for det in productos_comanda:
+            producto_id = det[0]
+            cantidad_necesaria = float(det[1])
+            cursor.execute("UPDATE productos SET cantidad_disponible = cantidad_disponible - %s WHERE id = %s AND empresa_id = %s", (cantidad_necesaria, producto_id, empresa_id))
+
+        cursor.execute("SELECT id FROM facturas WHERE comanda_id = %s AND empresa_id = %s", (comanda_id, session.get('empresa_id')))
+        factura_id = None
+        if not cursor.fetchone():
+            # Usar un cursor tipo diccionario para la facturación
+            cursor_dict = conn.cursor(dictionary=True)
+            # Obtener datos de la comanda para facturar
+            cursor_dict.execute("SELECT * FROM comandas WHERE id = %s", (comanda_id,))
+            comanda_data = cursor_dict.fetchone()
+            # Generar número de factura correlativo
+            cursor_dict.execute("SELECT COALESCE(MAX(numero_factura), 0) + 1 as next_num FROM facturas WHERE empresa_id = %s", (session.get('empresa_id'),))
+            numero_factura = cursor_dict.fetchone()['next_num']
+            # Insertar factura
+            cursor_dict.execute("""
+                INSERT INTO facturas (comanda_id, numero_factura, cliente_id, total, metodo_pago, estatus, usuario_id, empresa_id)
+                VALUES (%s, %s, %s, %s, %s, 'emitida', %s, %s)
+            """, (
+                comanda_id,
+                numero_factura,
+                comanda_data.get('cliente_id'),
+                comanda_data['total'],
+                comanda_data['estatus_pago'],
+                session['usuario']['id'],
+                session.get('empresa_id')
+            ))
+            factura_id = cursor_dict.lastrowid
+            # Insertar detalles de factura
+            cursor_dict.execute("SELECT * FROM comanda_detalle WHERE comanda_id = %s", (comanda_id,))
+            detalles = cursor_dict.fetchall()
+            for det in detalles:
+                cursor_dict.execute("""
+                    INSERT INTO factura_detalle (factura_id, producto_id, cantidad, precio_unitario, total, nota, empresa_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    factura_id,
+                    det['producto_id'],
+                    det['cantidad'],
+                    det['precio_unitario'],
+                    det['total'],
+                    det.get('nota', ''),
+                    session.get('empresa_id')
+                ))
+            cursor_dict.close()
+        else:
+            # Si ya existe factura, obtener su ID
+            cursor.execute("SELECT id FROM facturas WHERE comanda_id = %s AND empresa_id = %s", (comanda_id, session.get('empresa_id')))
+            factura_id = cursor.fetchone()[0]
         
+        print(f"✅ Factura creada/obtenida con ID: {factura_id}")
+        
+        # Determinar estatus de pago real
+        if abs(total_pagado - total_comanda) < 0.01:
+            estatus_pago_real = 'pagado'
+            factura_estatus = 'pagada'
+        else:
+            estatus_pago_real = 'credito'
+            factura_estatus = 'emitida'
+
+        # Insertar pagos usando el factura_id correcto
+        medios_pago_nombres = []
+        for pago in pagos:
+            print(f"💾 Insertando pago: {pago}")
+            cursor.execute("""
+                INSERT INTO pagos_factura 
+                (factura_id, medio_pago_id, monto, referencia, banco, observaciones, usuario_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                factura_id,  # ← Corregido: usar factura_id en lugar de comanda_id
+                pago.get('medio_pago_id'),
+                pago.get('monto'),
+                pago.get('referencia', ''),
+                pago.get('banco', ''),
+                pago.get('observaciones', ''),
+                session['usuario']['id']
+            ))
+            # Obtener nombre del medio de pago
+            cursor.execute("SELECT nombre FROM medios_pago WHERE id = %s", (pago.get('medio_pago_id'),))
+            medio = cursor.fetchone()
+            if medio:
+                medios_pago_nombres.append(medio[0])
+        # Actualizar metodo_pago de la factura según los pagos
+        if medios_pago_nombres:
+            metodo_pago_final = ', '.join(medios_pago_nombres)
+            cursor.execute("UPDATE facturas SET metodo_pago = %s WHERE id = %s", (metodo_pago_final, factura_id))
+
+        print("✅ Pagos insertados, actualizando estatus de comanda y factura...")
         # Actualizar estatus de la comanda
-        cursor.execute('UPDATE comandas SET estatus = %s WHERE id = %s', ('pagada', comanda_id))
+        cursor.execute("""
+            UPDATE comandas 
+            SET estatus_pago = %s, estatus = 'pagada'
+            WHERE id = %s
+        """, (estatus_pago_real, comanda_id))
+        # Actualizar estatus de la factura
+        cursor.execute("""
+            UPDATE facturas
+            SET estatus = %s
+            WHERE id = %s
+        """, (factura_estatus, factura_id))
         
-        # Actualizar estatus de la mesa a DISPONIBLE en mayúsculas
-        cursor.execute('UPDATE mesas SET estatus = %s WHERE id = %s', ('DISPONIBLE', comanda[1]))  # comanda[1] es mesa_id
-        
+        # Si es pagado, liberar la mesa
+        if estatus_pago_real == 'pagado':
+            print("🆓 Liberando mesa...")
+            cursor.execute("SELECT mesa_id FROM comandas WHERE id = %s", (comanda_id,))
+            mesa_row = cursor.fetchone()
+            if mesa_row and mesa_row[0]:
+                cursor.execute("UPDATE mesas SET estatus = 'libre' WHERE id = %s", (mesa_row[0],))
         conn.commit()
-        return jsonify({'success': True})
-        
+        print("✅ Transacción completada exitosamente")
+        return jsonify({
+            'success': True,
+            'message': f'Pago procesado exitosamente. Estatus: {estatus_pago_real}',
+            'factura_id': factura_id
+        })
     except Exception as e:
-        print(f"Error en pagar_comanda: {str(e)}")  # Debug
-        import traceback
-        print(f"Traceback completo: {traceback.format_exc()}")  # Debug
         conn.rollback()
-        return jsonify({'error': str(e)}), 500
-        
+        print(f"❌ Error en procesar_pago_comanda: {str(e)}")
+        print(f"🔍 Tipo de error: {type(e)}")
+        import traceback
+        print(f"📋 Traceback completo: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         cursor.close()
         conn.close()
@@ -1810,8 +1985,8 @@ def obtener_comandas_item():
             FROM comandas c
             JOIN mesas m ON c.mesa_id = m.Id
             JOIN comanda_detalle d ON c.id = d.comanda_id
-            JOIN item i ON d.item_id = i.id
-            WHERE i.nombre = %s AND c.estatus = 'pagada'
+            JOIN productos p ON d.producto_id = p.id
+            WHERE p.nombre = %s AND c.estatus = 'pagada'
         """
         params = [item_nombre]
         
@@ -2355,9 +2530,9 @@ def exportar_reporte(tipo):
         try:
             if tipo == 'ventas':
                 query = """
-                    SELECT i.nombre as item, SUM(d.cantidad) as cantidad, SUM(d.total) as total
+                    SELECT p.nombre as item, SUM(d.cantidad) as cantidad, SUM(d.total) as total
                     FROM comanda_detalle d
-                    JOIN item i ON d.item_id = i.id
+                    JOIN productos p ON d.producto_id = p.id
                     JOIN comandas c ON d.comanda_id = c.id
                     WHERE c.estatus = 'pagada'
                 """
@@ -2373,7 +2548,7 @@ def exportar_reporte(tipo):
                     query += " AND c.fecha <= %s"
                     params.append(fecha_fin + " 23:59:59")
                     
-                query += " GROUP BY i.nombre ORDER BY total DESC"
+                query += " GROUP BY p.nombre ORDER BY total DESC"
                 
                 print(f"Query ventas: {query}")  # Debug
                 print(f"Params ventas: {params}")  # Debug
@@ -2650,14 +2825,14 @@ def manager_dashboard():
         
         # Obtener top 5 items más vendidos
         cursor.execute("""
-            SELECT i.nombre, COUNT(*) as cantidad, SUM(cd.cantidad) as total_unidades
+            SELECT p.nombre, COUNT(*) as cantidad, SUM(cd.cantidad) as total_unidades
             FROM comanda_detalle cd
-            JOIN item i ON cd.item_id = i.id
+            JOIN productos p ON cd.producto_id = p.id
             JOIN comandas c ON cd.comanda_id = c.id
             WHERE c.estatus = 'pagada'
             AND MONTH(c.fecha) = MONTH(CURDATE())
             AND YEAR(c.fecha) = YEAR(CURDATE())
-            GROUP BY i.id, i.nombre
+            GROUP BY p.id, p.nombre
             ORDER BY total_unidades DESC
             LIMIT 5
         """)
@@ -2696,7 +2871,7 @@ def manager_dashboard():
         cursor.execute("SELECT COUNT(*) as activas FROM comandas WHERE estatus = 'activa'")
         comandas_activas = cursor.fetchone()['activas']
         
-        cursor.execute("SELECT COUNT(*) as total FROM item WHERE estatus = 'activo'")
+        cursor.execute("SELECT COUNT(*) as total FROM productos WHERE estatus = 'activo'")
         total_items = cursor.fetchone()['total']
         
         cursor.execute("SELECT COUNT(*) as total FROM mesas WHERE estatus = 'activo'")
@@ -2704,14 +2879,14 @@ def manager_dashboard():
         
         # Obtener items populares
         cursor.execute("""
-            SELECT i.nombre, g.nombre as grupo, COUNT(*) as cantidad
+            SELECT p.nombre, g.nombre as grupo, COUNT(*) as cantidad
             FROM comanda_detalle cd
-            JOIN item i ON cd.item_id = i.id
-            LEFT JOIN grupos g ON i.grupo_codigo = g.id
+            JOIN productos p ON cd.producto_id = p.id
+            LEFT JOIN grupos g ON p.grupo_id = g.id
             JOIN comandas c ON cd.comanda_id = c.id
             WHERE c.estatus = 'pagada'
             AND DATE(c.fecha) = CURDATE()
-            GROUP BY i.id, i.nombre, g.nombre
+            GROUP BY p.id, p.nombre, g.nombre
             ORDER BY cantidad DESC
             LIMIT 5
         """)
@@ -3268,7 +3443,7 @@ def seleccionar_carpeta():
         if not carpeta:
             return jsonify({
                 'success': False,
-                'message': 'Debe seleccionar una carpeta'
+                'message': 'Debe seleccionar una carpera'
             }), 400
             
         return jsonify({
@@ -3502,6 +3677,44 @@ def actualizar_estructura_comandas():
         cursor = conn.cursor()
         
         try:
+            cambios_realizados = []
+            
+            # Verificar si existe el campo cliente_id
+            cursor.execute("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'comandas' 
+                AND COLUMN_NAME = 'cliente_id'
+            """)
+            
+            if not cursor.fetchone():
+                # Agregar el campo cliente_id
+                cursor.execute("""
+                    ALTER TABLE comandas 
+                    ADD COLUMN cliente_id INT,
+                    ADD FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+                """)
+                cambios_realizados.append("campo cliente_id agregado")
+            
+            # Verificar si existe el campo empresa_id
+            cursor.execute("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'comandas' 
+                AND COLUMN_NAME = 'empresa_id'
+            """)
+            
+            if not cursor.fetchone():
+                # Agregar el campo empresa_id
+                cursor.execute("""
+                    ALTER TABLE comandas 
+                    ADD COLUMN empresa_id INT,
+                    ADD FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE
+                """)
+                cambios_realizados.append("campo empresa_id agregado")
+            
             # Verificar si existe el campo usuario_id
             cursor.execute("""
                 SELECT COLUMN_NAME 
@@ -3519,11 +3732,14 @@ def actualizar_estructura_comandas():
                     ADD COLUMN servicio ENUM('local', 'delivery') DEFAULT 'local',
                     ADD FOREIGN KEY (usuario_id) REFERENCES usuario(id)
                 """)
-                
-                conn.commit()
+                cambios_realizados.append("campo usuario_id y servicio agregados")
+            
+            conn.commit()
+            
+            if cambios_realizados:
                 return jsonify({
                     'success': True,
-                    'message': 'Estructura de comandas actualizada correctamente'
+                    'message': f'Estructura de comandas actualizada correctamente - {", ".join(cambios_realizados)}'
                 })
             else:
                 return jsonify({
@@ -3573,6 +3789,9 @@ def verificar_estructura_comandas():
             """)
             columnas = cursor.fetchall()
             
+            # Verificar si existe el campo cliente_id
+            tiene_cliente_id = any(col['COLUMN_NAME'] == 'cliente_id' for col in columnas)
+            
             # Verificar foreign keys
             cursor.execute("""
                 SELECT 
@@ -3589,11 +3808,13 @@ def verificar_estructura_comandas():
             
             # Verificar datos de ejemplo
             cursor.execute("""
-                SELECT c.id, c.mesa_id, c.usuario_id, c.servicio, 
-                       m.nombre as mesa_nombre, u.nombre_completo as usuario_nombre
+                SELECT c.id, c.mesa_id, c.usuario_id, c.servicio, c.cliente_id,
+                       m.nombre as mesa_nombre, u.nombre_completo as usuario_nombre,
+                       cl.nombre as cliente_nombre
                 FROM comandas c
                 LEFT JOIN mesas m ON c.mesa_id = m.id
                 LEFT JOIN usuario u ON c.usuario_id = u.id
+                LEFT JOIN clientes cl ON c.cliente_id = cl.id
                 ORDER BY c.id DESC
                 LIMIT 5
             """)
@@ -3601,13 +3822,12 @@ def verificar_estructura_comandas():
             
             return jsonify({
                 'success': True,
-                'estructura': {
-                    'columnas': columnas,
-                    'foreign_keys': foreign_keys,
-                    'comandas_ejemplo': comandas_ejemplo
-                }
+                'columnas': columnas,
+                'foreign_keys': foreign_keys,
+                'comandas_ejemplo': comandas_ejemplo,
+                'tiene_cliente_id': tiene_cliente_id
             })
-                
+            
         except Exception as e:
             return jsonify({
                 'success': False,
@@ -3740,7 +3960,7 @@ def test_ventas():
         cursor.execute("SELECT COUNT(*) as total FROM comanda_detalle")
         total_detalles = cursor.fetchone()['total']
         
-        cursor.execute("SELECT COUNT(*) as total FROM item")
+        cursor.execute("SELECT COUNT(*) as total FROM productos")
         total_items = cursor.fetchone()['total']
         
         cursor.execute("SELECT estatus, COUNT(*) as cantidad FROM comandas GROUP BY estatus")
@@ -3752,12 +3972,12 @@ def test_ventas():
         
         # Probar la consulta de ventas
         cursor.execute("""
-            SELECT i.nombre as item, SUM(d.cantidad) as cantidad, SUM(d.total) as total
+            SELECT p.nombre as item, SUM(d.cantidad) as cantidad, SUM(d.total) as total
             FROM comanda_detalle d
-            JOIN item i ON d.item_id = i.id
+            JOIN productos p ON d.producto_id = p.id
             JOIN comandas c ON d.comanda_id = c.id
             WHERE c.estatus = 'pagada'
-            GROUP BY i.nombre 
+            GROUP BY p.nombre 
             ORDER BY total DESC
         """)
         ventas_resultado = cursor.fetchall()
@@ -4451,12 +4671,12 @@ def crear_produccion_inventario():
             
             # Descontar ingredientes del inventario
             for ingrediente in ingredientes:
-                cantidad_necesaria = float(ingrediente['cantidad']) * float(receta_data['cantidad'])
+                cantidad_necesaria = float(ingrediente[1]) * float(receta_data['cantidad'])
                 cursor.execute('''
                     UPDATE productos 
                     SET cantidad_disponible = cantidad_disponible - %s 
                     WHERE id = %s
-                ''', (cantidad_necesaria, ingrediente['producto_id']))
+                ''', (cantidad_necesaria, ingrediente[0]))
             
             # Obtener el producto de la receta y aumentar su stock
             cursor.execute('''
@@ -4467,12 +4687,12 @@ def crear_produccion_inventario():
             receta = cursor.fetchone()
             
             if receta:
-                cantidad_producida = float(receta['unidad_producida']) * float(receta_data['cantidad'])
+                cantidad_producida = float(receta[1]) * float(receta_data['cantidad'])
                 cursor.execute('''
                     UPDATE productos 
                     SET cantidad_disponible = cantidad_disponible + %s 
                     WHERE id = %s
-                ''', (cantidad_producida, receta['producto_id']))
+                ''', (cantidad_producida, receta[0]))
         
         conn.commit()
         return jsonify({'success': True, 'message': 'Producción creada correctamente'})
@@ -4561,9 +4781,13 @@ def gestion_produccion_inventario(produccion_id):
             
             # Convertir Decimal a float
             for detalle in detalles:
-                detalle['cantidad'] = float(detalle['cantidad'])
-                detalle['unidad_producida'] = float(detalle['unidad_producida'])
-            
+                detalle['precio_unitario'] = float(detalle['precio_unitario'])
+                detalle['total'] = float(detalle['total'])
+                # Ajustar el stock mostrado: stock real + cantidad ya en la comanda
+                cursor.execute("SELECT cantidad_disponible FROM productos WHERE id = %s AND empresa_id = %s", (detalle['producto_id'], session.get('empresa_id')))
+                stock_global = cursor.fetchone()
+                detalle['stock'] = (float(stock_global[0]) if stock_global else 0) + float(detalle['cantidad'])
+                        
             return jsonify({
                 'success': True, 
                 'produccion': produccion, 
@@ -4731,6 +4955,48 @@ def crear_tablas_inventario():
                 )
             """)
             
+            # 2. Crear tabla de pagos de comandas con campo banco
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pagos_comanda (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    comanda_id INT NOT NULL,
+                    medio_pago_id INT NOT NULL,
+                    monto DECIMAL(10,2) NOT NULL,
+                    referencia VARCHAR(100),
+                    banco VARCHAR(100),
+                    observaciones TEXT,
+                    usuario_id INT,
+                    fecha_pago TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (comanda_id) REFERENCES comandas(id) ON DELETE CASCADE,
+                    FOREIGN KEY (medio_pago_id) REFERENCES medios_pago(id),
+                    FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+                )
+            """)
+            
+            # 3. Crear tabla de pagos de facturas con campo banco
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pagos_factura (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    factura_id INT NOT NULL,
+                    medio_pago_id INT NOT NULL,
+                    monto DECIMAL(10,2) NOT NULL,
+                    referencia VARCHAR(100),
+                    banco VARCHAR(100),
+                    observaciones TEXT,
+                    usuario_id INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (factura_id) REFERENCES comandas(id) ON DELETE CASCADE,
+                    FOREIGN KEY (medio_pago_id) REFERENCES medios_pago(id),
+                    FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+                )
+            """)
+            
+            # 4. Agregar columna estatus_pago a la tabla comandas si no existe
+            cursor.execute("""
+                ALTER TABLE comandas 
+                ADD COLUMN IF NOT EXISTS estatus_pago ENUM('pendiente', 'pagado', 'credito') DEFAULT 'pendiente'
+            """)
+            
             conn.commit()
             return jsonify({
                 'success': True, 
@@ -4776,6 +5042,37 @@ def manager_grupos():
     except Exception as e:
         flash(f'Error al cargar grupos: {str(e)}', 'danger')
         return render_template('partials/grupos.html', grupos=[])
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/grupos', methods=['GET'])
+@login_required
+def obtener_grupos():
+    """API para obtener todos los grupos"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT id, nombre, descripcion, estatus 
+            FROM grupos 
+            WHERE empresa_id = %s AND estatus = 'activo'
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
+        grupos = cursor.fetchall()
+        
+        # Adaptar los campos para el frontend
+        for grupo in grupos:
+            grupo['codigo'] = grupo['id']
+        
+        return jsonify(grupos)
+        
+    except Exception as e:
+        print("Error al obtener grupos:", str(e))
+        return jsonify({'success': False, 'message': f'Error al obtener grupos: {str(e)}'}), 500
     finally:
         if 'cursor' in locals(): cursor.close()
         if 'conn' in locals(): conn.close()
@@ -5090,6 +5387,1487 @@ def gestion_producto(producto_id):
     finally:
         cursor.close()
         conn.close()
+
+# ======================
+# GESTIÓN DE CLIENTES
+# ======================
+
+from flask import request, jsonify
+
+@app.route('/api/clientes/buscar', methods=['GET'])
+@login_required
+def buscar_clientes_api():
+    """API para buscar clientes por nombre, RIF o teléfono"""
+    try:
+        query = request.args.get('q', '').strip()
+        if len(query) < 2:
+            return jsonify([])
+            
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT id, nombre, cedula_rif, telefono, direccion, correo
+            FROM clientes
+            WHERE empresa_id = %s AND (
+                nombre LIKE %s OR cedula_rif LIKE %s OR telefono LIKE %s
+            )
+            ORDER BY nombre
+            LIMIT 20
+        """, (session.get('empresa_id'), f'%{query}%', f'%{query}%', f'%{query}%'))
+        
+        clientes = cursor.fetchall()
+        return jsonify(clientes)
+        
+    except Exception as e:
+        print("Error al buscar clientes:", str(e))
+        return jsonify({'success': False, 'message': f'Error al buscar clientes: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/clientes', methods=['GET'])
+@login_required
+def buscar_clientes():
+    busqueda = request.args.get('busqueda', '').strip()
+    empresa_id = session.get('empresa_id')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = """
+            SELECT * FROM clientes
+            WHERE empresa_id = %s AND (
+                nombre LIKE %s OR cedula_rif LIKE %s OR telefono LIKE %s OR correo LIKE %s
+            )
+            LIMIT 20
+        """
+        like = f"%{busqueda}%"
+        cursor.execute(query, (empresa_id, like, like, like, like))
+        clientes = cursor.fetchall()
+        return jsonify({'success': True, 'clientes': clientes})
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/clientes', methods=['POST'])
+@login_required
+def crear_cliente():
+    data = request.json
+    empresa_id = session.get('empresa_id')
+    usuario_id = session['usuario']['id']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO clientes (nombre, cedula_rif, telefono, direccion, correo, empresa_id, usuario_creador_id, estatus, fecha_nacimiento, observaciones)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data.get('nombre'),
+            data.get('cedula_rif'),
+            data.get('telefono'),
+            data.get('direccion'),
+            data.get('correo'),
+            empresa_id,
+            usuario_id,
+            data.get('estatus', 'activo'),
+            data.get('fecha_nacimiento'),
+            data.get('observaciones')
+        ))
+        conn.commit()
+        return jsonify({'success': True, 'cliente_id': cursor.lastrowid})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        cursor.close()
+        conn.close()
+
+# ======================
+# GESTIÓN DE COMANDA
+# ======================
+
+@app.route('/api/comanda', methods=['GET', 'POST'])
+@login_required
+def api_comanda():
+    if request.method == 'GET':
+        # Obtener comanda por mesa_id
+        mesa_id = request.args.get('mesa_id')
+        if not mesa_id:
+            return jsonify({'error': 'mesa_id es requerido'}), 400
+            
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        try:
+            # Buscar comanda activa para la mesa
+            cursor.execute("""
+                SELECT c.*, m.nombre as mesa_nombre, 
+                       cl.id as cliente_id, cl.nombre as cliente_nombre, cl.cedula_rif as cliente_cedula_rif, 
+                       cl.telefono as cliente_telefono, cl.direccion as cliente_direccion, cl.correo as cliente_correo
+                FROM comandas c
+                JOIN mesas m ON c.mesa_id = m.id
+                LEFT JOIN clientes cl ON c.cliente_id = cl.id
+                WHERE c.mesa_id = %s AND c.estatus = 'pendiente' AND c.empresa_id = %s
+                ORDER BY c.fecha DESC
+                LIMIT 1
+            """, (mesa_id, session.get('empresa_id')))
+            
+            comanda = cursor.fetchone()
+            
+            if comanda:
+                # Obtener detalles de la comanda
+                cursor.execute("""
+                    SELECT cd.*, p.nombre, p.precio_venta, g.nombre as grupo_nombre, p.cantidad_disponible as stock
+                    FROM comanda_detalle cd
+                    JOIN productos p ON cd.producto_id = p.id
+                    LEFT JOIN grupos g ON p.grupo_id = g.id
+                    WHERE cd.comanda_id = %s
+                """, (comanda['id'],))
+                
+                detalles = cursor.fetchall()
+                
+                # Convertir Decimal a float
+                comanda['total'] = float(comanda['total'])
+                for detalle in detalles:
+                    print('DEBUG detalle:', detalle)  # Depuración
+                    detalle['precio_unitario'] = float(detalle['precio_unitario'])
+                    detalle['total'] = float(detalle['total'])
+                    # Ajustar el stock mostrado: stock real + cantidad ya en la comanda
+                    cantidad_en_comanda = float(detalle.get('cantidad', 0))
+                    cursor.execute("SELECT cantidad_disponible FROM productos WHERE id = %s AND empresa_id = %s", (detalle['producto_id'], session.get('empresa_id')))
+                    stock_global = cursor.fetchone()
+                    detalle['stock'] = (float(stock_global[0]) if stock_global else 0) + cantidad_en_comanda
+                    detalle['stock'] = float(detalle['stock'])
+                    detalle['total'] = float(detalle['total'])
+                    detalle['precio_unitario'] = float(detalle['precio_unitario'])
+                # Convertir cualquier otro campo Decimal a float en comanda
+                for k, v in comanda.items():
+                    if isinstance(v, Decimal):
+                        comanda[k] = float(v)
+                # Convertir cualquier otro campo Decimal a float en detalles
+                for detalle in detalles:
+                    for k, v in detalle.items():
+                        if isinstance(v, Decimal):
+                            detalle[k] = float(v)
+                
+                return jsonify({
+                    'success': True,
+                    'comanda': comanda,
+                    'detalles': detalles
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'comanda': None,
+                    'detalles': []
+                })
+                
+        except Exception as e:
+            print(f"Error al obtener comanda: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+    
+    elif request.method == 'POST':
+        # Crear o actualizar comanda
+        data = request.json
+        print('DEBUG - Datos recibidos en POST /api/comanda:', data)  # Debug
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            mesa_id = data.get('mesa_id')
+            comanda_id = data.get('comanda_id')
+            servicio = data.get('servicio', 'local')
+            cliente_id = data.get('cliente_id')
+            items = data.get('items', [])
+            print(f'DEBUG - Items recibidos: {items}')  # Debug
+            
+            if not mesa_id or not items:
+                print('DEBUG - Faltan mesa_id o items')  # Debug
+                return jsonify({'error': 'mesa_id e items son requeridos'}), 400
+            
+            usuario_id = session['usuario']['id']
+            
+            if comanda_id:
+                # Actualizar comanda existente
+                cursor.execute("""
+                    UPDATE comandas 
+                    SET servicio = %s, cliente_id = %s, empresa_id = %s, total = 0
+                    WHERE id = %s
+                """, (servicio, cliente_id, session.get('empresa_id'), comanda_id))
+                
+                # Eliminar detalles existentes
+                cursor.execute("DELETE FROM comanda_detalle WHERE comanda_id = %s", (comanda_id,))
+            else:
+                # Crear nueva comanda
+                cursor.execute("""
+                    INSERT INTO comandas (mesa_id, usuario_id, servicio, cliente_id, empresa_id, total, estatus)
+                    VALUES (%s, %s, %s, %s, %s, 0, 'pendiente')
+                """, (mesa_id, usuario_id, servicio, cliente_id, session.get('empresa_id')))
+                comanda_id = cursor.lastrowid
+            
+            # Validar stock antes de insertar detalles
+            cantidades_por_producto = {}
+            for item in items:
+                producto_id = item.get('producto_id')
+                cantidad = item.get('cantidad', 0)
+                if producto_id and cantidad > 0:
+                    cantidades_por_producto[producto_id] = cantidades_por_producto.get(producto_id, 0) + cantidad
+            for producto_id, cantidad_total in cantidades_por_producto.items():
+                cursor.execute("SELECT cantidad_disponible, nombre FROM productos WHERE id = %s AND empresa_id = %s", (producto_id, session.get('empresa_id')))
+                prod = cursor.fetchone()
+                if not prod or float(prod[0]) < cantidad_total:
+                    return jsonify({'success': False, 'message': f'Stock insuficiente para \"{prod[1] if prod else producto_id}\". Disponible: {prod[0] if prod else 0}'}), 400
+            
+            # Insertar detalles
+            total_comanda = 0
+            detalles_insertados = 0
+            for item in items:
+                producto_id = item.get('producto_id')
+                cantidad = item.get('cantidad', 0)
+                precio = item.get('precio', 0)
+                nota = item.get('nota', '')
+                grupo_codigo = item.get('grupo_codigo', '')
+                print(f'DEBUG - Intentando insertar detalle: producto_id={producto_id}, cantidad={cantidad}, precio={precio}, nota={nota}')
+                
+                if producto_id and cantidad > 0:
+                    total_item = precio * cantidad
+                    total_comanda += total_item
+                    try:
+                        cursor.execute("""
+                            INSERT INTO comanda_detalle 
+                            (comanda_id, producto_id, cantidad, precio_unitario, total, nota, estatus)
+                            VALUES (%s, %s, %s, %s, %s, %s, 'pendiente')
+                        """, (comanda_id, producto_id, cantidad, precio, total_item, nota))
+                        detalles_insertados += 1
+                        print(f'DEBUG - Detalle insertado correctamente (producto_id={producto_id})')
+                    except Exception as e:
+                        print(f'ERROR al insertar detalle (producto_id={producto_id}):', e)
+            print(f'DEBUG - Total detalles insertados: {detalles_insertados}')
+            
+            # Actualizar total de la comanda
+            cursor.execute("UPDATE comandas SET total = %s WHERE id = %s", (total_comanda, comanda_id))
+
+            # Actualizar estatus de la mesa a 'ocupada'
+            cursor.execute("UPDATE mesas SET estatus = %s WHERE id = %s", ('ocupada', mesa_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'comanda_id': comanda_id,
+                'message': 'Comanda guardada exitosamente'
+            })
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"Error al guardar comanda: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/crear-tabla-clientes', methods=['POST'])
+@login_required
+@soporte_required
+def crear_tabla_clientes():
+    """API para crear la tabla clientes si no existe"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor()
+        
+        try:
+            # Crear tabla clientes si no existe
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS clientes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(100) NOT NULL,
+                    cedula_rif VARCHAR(20) NOT NULL UNIQUE,
+                    telefono VARCHAR(20),
+                    direccion TEXT,
+                    correo VARCHAR(100),
+                    empresa_id INT NOT NULL,
+                    usuario_creador_id INT NOT NULL,
+                    estatus ENUM('activo', 'inactivo', 'suspendido') DEFAULT 'activo',
+                    fecha_nacimiento DATE NULL,
+                    observaciones TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (empresa_id) REFERENCES empresa(id),
+                    FOREIGN KEY (usuario_creador_id) REFERENCES usuario(id)
+                )
+            """)
+            
+            # Verificar si existe el campo cliente_id en la tabla comandas
+            cursor.execute("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'comandas' 
+                AND COLUMN_NAME = 'cliente_id'
+            """)
+            
+            if not cursor.fetchone():
+                # Agregar el campo cliente_id a la tabla comandas
+                cursor.execute("""
+                    ALTER TABLE comandas 
+                    ADD COLUMN cliente_id INT,
+                    ADD FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+                """)
+            
+            conn.commit()
+            return jsonify({
+                'success': True, 
+                'message': 'Tabla clientes creada y estructura de comandas actualizada correctamente'
+            })
+            
+        except Exception as e:
+            conn.rollback()
+            return jsonify({
+                'success': False, 
+                'message': f'Error al crear las tablas: {str(e)}'
+            }), 500
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({
+            'success': False, 
+            'message': f'Error inesperado: {str(e)}'
+        }), 500
+
+@app.route('/api/crear-tablas-pagos', methods=['POST'])
+@login_required
+def crear_tablas_pagos():
+    """Crear las tablas necesarias para el sistema de pagos"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 1. Crear tabla de medios de pago
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS medios_pago (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                nombre VARCHAR(50) NOT NULL,
+                descripcion TEXT,
+                activo BOOLEAN DEFAULT TRUE,
+                empresa_id INT,
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE
+            )
+        """)
+        
+        # 2. Crear tabla de pagos de facturas con campo banco
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pagos_factura (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                factura_id INT NOT NULL,
+                medio_pago_id INT NOT NULL,
+                monto DECIMAL(10,2) NOT NULL,
+                referencia VARCHAR(100),
+                banco VARCHAR(100),
+                observaciones TEXT,
+                usuario_id INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (factura_id) REFERENCES comandas(id) ON DELETE CASCADE,
+                FOREIGN KEY (medio_pago_id) REFERENCES medios_pago(id),
+                FOREIGN KEY (usuario_id) REFERENCES usuario(id)
+            )
+        """)
+        
+        # 3. Agregar columna estatus_pago a la tabla comandas si no existe
+        cursor.execute("""
+            ALTER TABLE comandas 
+            ADD COLUMN IF NOT EXISTS estatus_pago ENUM('pendiente', 'pagado', 'credito') DEFAULT 'pendiente'
+        """)
+        
+        # 4. Insertar medios de pago personalizados
+        medios_default = [
+            ('Efectivo', 'Pago en efectivo'),
+            ('Tarjeta de Débito', 'Pago con tarjeta de débito'),
+            ('Tarjeta de Crédito', 'Pago con tarjeta de crédito'),
+            ('Transferencia', 'Transferencia bancaria'),
+            ('Efectivo$', 'Pago en efectivo en dólares'),
+            ('Transferencia$', 'Transferencia bancaria en dólares'),
+            ('Cachéa', 'Pago con Cachéa')
+        ]
+        
+        for nombre, descripcion in medios_default:
+            cursor.execute("""
+                INSERT IGNORE INTO medios_pago (nombre, descripcion, empresa_id)
+                VALUES (%s, %s, %s)
+            """, (nombre, descripcion, session.get('empresa_id')))
+        
+        conn.commit()
+        return jsonify({
+            'success': True,
+            'message': 'Tablas de pagos creadas exitosamente'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/medios-pago', methods=['GET'])
+@login_required
+def obtener_medios_pago():
+    """Obtener medios de pago disponibles"""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("""
+            SELECT id, nombre, descripcion 
+            FROM medios_pago 
+            WHERE activo = TRUE AND empresa_id = %s
+            ORDER BY nombre
+        """, (session.get('empresa_id'),))
+        
+        medios = cursor.fetchall()
+        return jsonify({
+            'success': True,
+            'medios_pago': medios
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/validar-admin', methods=['POST'])
+@login_required
+def validar_admin():
+    """Validar credenciales de administrador para autorizar créditos"""
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    
+    if not username or not password:
+        return jsonify({
+            'success': False,
+            'error': 'Usuario y contraseña son requeridos'
+        }), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("""
+            SELECT id, nombre_completo, rol, password
+            FROM usuario 
+            WHERE user = %s AND empresa_id = %s
+        """, (username, session.get('empresa_id')))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': 'Usuario no encontrado'
+            }), 401
+        
+        if user['rol'] != 'admin':
+            return jsonify({
+                'success': False,
+                'error': 'El usuario no tiene permisos de administrador'
+            }), 403
+        
+        # Verificar contraseña en texto plano
+        if user['password'] != password:
+            return jsonify({
+                'success': False,
+                'error': 'Contraseña incorrecta'
+            }), 401
+        
+        return jsonify({
+            'success': True,
+            'message': 'Administrador validado correctamente',
+            'admin_id': user['id'],
+            'admin_nombre': user['nombre_completo']
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/productos', methods=['GET'])
+@login_required
+def obtener_productos():
+    """API para obtener productos, opcionalmente filtrados por grupo"""
+    try:
+        grupo = request.args.get('grupo')
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'message': 'Error de conexión a la base de datos'}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        
+        if grupo:
+            # Filtrar por grupo
+            cursor.execute("""
+                SELECT p.id, p.nombre, p.precio_venta, p.grupo_id, g.nombre as grupo_nombre, g.id as grupo_codigo
+                FROM productos p
+                LEFT JOIN grupos g ON p.grupo_id = g.id
+                WHERE p.empresa_id = %s AND p.estatus = 'activo' AND p.cantidad_disponible > 0 
+                AND g.id = %s
+                ORDER BY p.nombre
+            """, (session.get('empresa_id'), grupo))
+        else:
+            # Obtener todos los productos
+            cursor.execute("""
+                SELECT p.id, p.nombre, p.precio_venta, p.grupo_id, g.nombre as grupo_nombre, g.id as grupo_codigo
+                FROM productos p
+                LEFT JOIN grupos g ON p.grupo_id = g.id
+                WHERE p.empresa_id = %s AND p.estatus = 'activo' AND p.cantidad_disponible > 0
+                ORDER BY g.nombre, p.nombre
+            """, (session.get('empresa_id'),))
+        
+        productos = cursor.fetchall()
+        
+        # Convertir Decimal a float para JSON
+        for producto in productos:
+            producto['precio_venta'] = float(producto['precio_venta'])
+        
+        return jsonify(productos)
+        
+    except Exception as e:
+        print("Error al obtener productos:", str(e))
+        return jsonify({'success': False, 'message': f'Error al obtener productos: {str(e)}'}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/api/facturar', methods=['POST'])
+@login_required
+def facturar():
+    """Emitir una factura a partir de una comanda pagada o a crédito"""
+    data = request.json
+    comanda_id = data.get('comanda_id')
+    empresa_id = session.get('empresa_id')
+    usuario_id = session['usuario']['id']
+    if not comanda_id:
+        return jsonify({'success': False, 'error': 'comanda_id es requerido'}), 400
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # 1. Verificar que la comanda existe y está pagada o a crédito
+        cursor.execute("SELECT * FROM comandas WHERE id = %s AND empresa_id = %s", (comanda_id, empresa_id))
+        comanda = cursor.fetchone()
+        if not comanda:
+            return jsonify({'success': False, 'error': 'Comanda no encontrada'}), 404
+        if comanda['estatus_pago'] not in ['pagado', 'credito']:
+            return jsonify({'success': False, 'error': 'Solo se puede facturar una comanda pagada o a crédito'}), 400
+        # 2. Verificar que no exista ya una factura para esta comanda
+        cursor.execute("SELECT id FROM facturas WHERE comanda_id = %s AND empresa_id = %s", (comanda_id, empresa_id))
+        if cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Ya existe una factura para esta comanda'}), 400
+
+        # === CONTROL DE INVENTARIO ===
+        # Obtener los productos reales y cantidades de la comanda
+        cursor.execute('''
+            SELECT d.producto_id, d.cantidad
+            FROM comanda_detalle d
+            JOIN productos p ON d.producto_id = p.id
+            WHERE d.comanda_id = %s
+        ''', (comanda_id,))
+        productos_comanda = cursor.fetchall()
+        productos_sin_stock = []
+        for det in productos_comanda:
+            producto_id = det[0]
+            cantidad_necesaria = float(det[1])
+            cursor.execute("SELECT cantidad_disponible, nombre FROM productos WHERE id = %s AND empresa_id = %s", (producto_id, empresa_id))
+            prod = cursor.fetchone()
+            if not prod or float(prod[0]) < cantidad_necesaria:
+                productos_sin_stock.append(prod[1] if prod else f'ID {producto_id}')
+        if productos_sin_stock:
+            return jsonify({'success': False, 'error': f"Stock insuficiente para: {', '.join(productos_sin_stock)}"}), 400
+        # Descontar stock
+        for det in productos_comanda:
+            producto_id = det[0]
+            cantidad_necesaria = float(det[1])
+            cursor.execute("UPDATE productos SET cantidad_disponible = cantidad_disponible - %s WHERE id = %s AND empresa_id = %s", (cantidad_necesaria, producto_id, empresa_id))
+
+        # 3. Generar número de factura correlativo por empresa
+        cursor.execute("SELECT COALESCE(MAX(numero_factura), 0) + 1 as next_num FROM facturas WHERE empresa_id = %s", (empresa_id,))
+        numero_factura = cursor.fetchone()['next_num']
+        # 4. Insertar la factura
+        cursor.execute("""
+            INSERT INTO facturas (comanda_id, numero_factura, cliente_id, total, metodo_pago, estatus, usuario_id, empresa_id)
+            VALUES (%s, %s, %s, %s, %s, 'emitida', %s, %s)
+        """, (
+            comanda_id,
+            numero_factura,
+            comanda.get('cliente_id'),
+            comanda['total'],
+            comanda['estatus_pago'],
+            usuario_id,
+            empresa_id
+        ))
+        factura_id = cursor.lastrowid
+        # 5. Insertar detalles de la factura
+        cursor.execute("SELECT * FROM comanda_detalle WHERE comanda_id = %s", (comanda_id,))
+        detalles = cursor.fetchall()
+        for det in detalles:
+            cursor.execute("""
+                INSERT INTO factura_detalle (factura_id, producto_id, cantidad, precio_unitario, total, nota, empresa_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                factura_id,
+                det['producto_id'],
+                det['cantidad'],
+                det['precio_unitario'],
+                det['total'],
+                det.get('nota', ''),
+                empresa_id
+            ))
+        conn.commit()
+        return jsonify({
+            'success': True,
+            'factura_id': factura_id,
+            'numero_factura': numero_factura,
+            'total': comanda['total'],
+            'metodo_pago': comanda['estatus_pago'],
+            'cliente_id': comanda.get('cliente_id'),
+            'comanda_id': comanda_id
+        })
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/factura/<int:factura_id>/pdf')
+@login_required
+def factura_pdf(factura_id):
+    """Genera un PDF tamaño ticket de la factura"""
+    import io
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from datetime import datetime
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Obtener datos de la factura, empresa, cliente y detalles
+        cursor.execute("""
+            SELECT f.*, e.nombre_empresa, e.rif, e.direccion, e.logo, c.nombre as cliente_nombre, c.cedula_rif as cliente_cedula, c.direccion as cliente_direccion
+            FROM facturas f
+            JOIN empresa e ON f.empresa_id = e.id
+            LEFT JOIN clientes c ON f.cliente_id = c.id
+            WHERE f.id = %s
+        """, (factura_id,))
+        factura = cursor.fetchone()
+        if not factura:
+            return jsonify({'success': False, 'error': 'Factura no encontrada'}), 404
+        cursor.execute("""
+            SELECT fd.*, p.nombre as producto_nombre
+            FROM factura_detalle fd
+            LEFT JOIN productos p ON fd.producto_id = p.id
+            WHERE fd.factura_id = %s
+        """, (factura_id,))
+        detalles = cursor.fetchall()
+        # Crear PDF tamaño ticket 80mm (ancho 80mm, largo variable)
+        buffer = io.BytesIO()
+        ticket_width = 80 * mm
+        ticket_height = max(120, 60 + 8*len(detalles)) * mm  # Altura mínima + por ítem
+        c = canvas.Canvas(buffer, pagesize=(ticket_width, ticket_height))
+        y = ticket_height - 10*mm
+        # Logo
+        if factura['logo']:
+            try:
+                logo_bytes = factura['logo']
+                logo_img = ImageReader(io.BytesIO(logo_bytes))
+                c.drawImage(logo_img, 10, y-30, width=60*mm, height=20*mm, preserveAspectRatio=True, mask='auto')
+                y -= 22*mm
+            except Exception as e:
+                y -= 2*mm
+        # Empresa
+        c.setFont("Helvetica-Bold", 10)
+        c.drawCentredString(ticket_width/2, y, factura['nombre_empresa'])
+        y -= 5*mm
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(ticket_width/2, y, f"RIF: {factura['rif']}")
+        y -= 4*mm
+        c.drawCentredString(ticket_width/2, y, factura['direccion'] or "")
+        y -= 6*mm
+        # Factura info
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(5*mm, y, f"Factura N°: {factura['numero_factura']}")
+        c.setFont("Helvetica", 8)
+        fecha_emision = factura['fecha_emision'] if isinstance(factura['fecha_emision'], str) else factura['fecha_emision'].strftime('%d/%m/%Y %H:%M')
+        c.drawString(45*mm, y, f"Fecha: {fecha_emision}")
+        y -= 5*mm
+        # Cliente
+        if factura['cliente_nombre']:
+            c.setFont("Helvetica-Bold", 8)
+            c.drawString(5*mm, y, f"Cliente: {factura['cliente_nombre']}")
+            y -= 4*mm
+            c.setFont("Helvetica", 7)
+            c.drawString(5*mm, y, f"CI/RIF: {factura['cliente_cedula'] or ''}")
+            y -= 4*mm
+            if factura['cliente_direccion']:
+                c.drawString(5*mm, y, f"Dir: {factura['cliente_direccion']}")
+                y -= 4*mm
+        # Línea
+        c.line(5*mm, y, 75*mm, y)
+        y -= 3*mm
+        # Encabezado ítems
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(5*mm, y, "Cant")
+        c.drawString(18*mm, y, "Descripción")
+        c.drawRightString(75*mm, y, "Total")
+        y -= 4*mm
+        c.setFont("Helvetica", 7)
+        for det in detalles:
+            c.drawString(5*mm, y, str(det['cantidad']))
+            c.drawString(18*mm, y, det['producto_nombre'] or str(det['producto_id']))
+            c.drawRightString(75*mm, y, f"{det['total']:.2f}")
+            y -= 4*mm
+        y -= 2*mm
+        c.line(5*mm, y, 75*mm, y)
+        y -= 4*mm
+        # Subtotal y total
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(5*mm, y, "Subtotal:")
+        c.drawRightString(75*mm, y, f"{factura['total']:.2f}")
+        y -= 5*mm
+        c.drawString(5*mm, y, "Total:")
+        c.drawRightString(75*mm, y, f"{factura['total']:.2f}")
+        y -= 5*mm
+        # Método de pago
+        c.setFont("Helvetica", 8)
+        c.drawString(5*mm, y, f"Pago: {factura['metodo_pago']}")
+        y -= 5*mm
+        # Estatus
+        c.drawString(5*mm, y, f"Estatus: {factura['estatus']}")
+        y -= 5*mm
+        c.save()
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True, download_name=f'factura_{factura_id}.pdf', mimetype='application/pdf')
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/facturas/reporte-dia', methods=['GET'])
+@login_required
+def reporte_facturas_dia():
+    """Devuelve todas las facturas emitidas en una fecha dada (default hoy) y permite exportar a PDF."""
+    from datetime import datetime, date
+    import io
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    fecha = request.args.get('fecha')
+    exportar_pdf = request.args.get('pdf') == '1'
+    empresa_id = session.get('empresa_id')
+    if not fecha:
+        fecha = date.today().strftime('%Y-%m-%d')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Obtener facturas con información de cliente
+        cursor.execute("""
+            SELECT f.id, f.numero_factura, f.fecha_emision, f.total, f.metodo_pago, f.estatus, 
+                   c.nombre as cliente_nombre, c.cedula_rif as cliente_cedula
+            FROM facturas f
+            LEFT JOIN clientes c ON f.cliente_id = c.id
+            WHERE DATE(f.fecha_emision) = %s AND f.empresa_id = %s
+            ORDER BY f.numero_factura ASC
+        """, (fecha, empresa_id))
+        facturas = cursor.fetchall()
+        
+        # Obtener detalles de pago para cada factura
+        for f in facturas:
+            cursor.execute("""
+                SELECT pf.medio_pago_id, pf.monto, pf.referencia, pf.banco, pf.observaciones, 
+                       mp.nombre as medio_pago_nombre
+                FROM pagos_factura pf
+                LEFT JOIN medios_pago mp ON pf.medio_pago_id = mp.id
+                WHERE pf.factura_id = %s
+                ORDER BY pf.id ASC
+            """, (f['id'],))
+            f['pagos'] = cursor.fetchall()
+        
+        if exportar_pdf:
+            # Generar PDF mejorado
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            elements = []
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, spaceAfter=20)
+            subtitle_style = ParagraphStyle('CustomSubtitle', parent=styles['Heading2'], fontSize=12, spaceAfter=10)
+            
+            elements.append(Paragraph(f"Cierre Diario de Pagos - {fecha}", title_style))
+            elements.append(Paragraph(f"Reporte detallado de facturas y pagos realizados", subtitle_style))
+            elements.append(Spacer(1, 20))
+            
+            # Tabla principal con información detallada
+            data = [["N° Factura", "Cliente", "Fecha", "Total", "Medios de Pago", "Estatus"]]
+            total_general = 0
+            
+            for f in facturas:
+                # Formatear información del cliente
+                cliente_info = f["cliente_nombre"] or "Cliente General"
+                if f.get("cliente_cedula"):
+                    cliente_info += f" ({f['cliente_cedula']})"
+                
+                # Formatear medios de pago con detalles
+                pagos_str = ""
+                if f.get('pagos'):
+                    pagos_detalle = []
+                    for p in f['pagos']:
+                        detalle = f"<b>{p['medio_pago_nombre'] or 'Otro'}:</b> ${float(p['monto']):.2f}"
+                        if p.get('referencia'):
+                            detalle += f" (Ref: {p['referencia']})"
+                        if p.get('banco'):
+                            detalle += f" - {p['banco']}"
+                        if p.get('observaciones'):
+                            detalle += f" - {p['observaciones']}"
+                        pagos_detalle.append(detalle)
+                    pagos_str = '<br/>'.join(pagos_detalle)
+                else:
+                    pagos_str = f"<b>{f['metodo_pago']}</b>"
+                
+                data.append([
+                    f"#{f['numero_factura']}",
+                    cliente_info,
+                    f["fecha_emision"].strftime('%d/%m/%Y %H:%M'),
+                    f"${float(f['total']):.2f}",
+                    pagos_str,
+                    f["estatus"].upper()
+                ])
+                total_general += float(f['total'])
+            
+            # Agregar total general
+            data.append(["", "", "", f"<b>TOTAL: ${total_general:.2f}</b>", "", ""])
+            
+            # Crear tabla con anchos de columna optimizados
+            table = Table(data, colWidths=[80, 150, 100, 80, 150, 80])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (1, -2), 'LEFT'),  # Alinear cliente a la izquierda
+                ('ALIGN', (4, 1), (4, -2), 'LEFT'),  # Alinear medios de pago a la izquierda
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.whitesmoke),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey])
+            ]))
+            
+            elements.append(table)
+            
+            # Agregar resumen por medio de pago
+            elements.append(Spacer(1, 20))
+            elements.append(Paragraph("Resumen por Medio de Pago", subtitle_style))
+            
+            # Calcular totales por medio de pago
+            resumen_medios = {}
+            for f in facturas:
+                if f.get('pagos'):
+                    for p in f['pagos']:
+                        medio = p['medio_pago_nombre'] or 'Otro'
+                        monto = float(p['monto'])
+                        if medio in resumen_medios:
+                            resumen_medios[medio] += monto
+                        else:
+                            resumen_medios[medio] = monto
+                else:
+                    # Si no hay pagos detallados, usar el método de pago general
+                    medio = f['metodo_pago']
+                    monto = float(f['total'])
+                    if medio in resumen_medios:
+                        resumen_medios[medio] += monto
+                    else:
+                        resumen_medios[medio] = monto
+            
+            if resumen_medios:
+                resumen_data = [["Medio de Pago", "Total"]]
+                for medio, total in sorted(resumen_medios.items()):
+                    resumen_data.append([medio, f"${total:.2f}"])
+                
+                resumen_table = Table(resumen_data, colWidths=[200, 100])
+                resumen_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+                ]))
+                elements.append(resumen_table)
+            
+            doc.build(elements)
+            buffer.seek(0)
+            return send_file(buffer, as_attachment=True, download_name=f'cierre_diario_pagos_{fecha}.pdf', mimetype='application/pdf')
+        
+        # Si no es PDF, devolver JSON mejorado
+        for f in facturas:
+            f['fecha_emision'] = f['fecha_emision'].strftime('%d/%m/%Y %H:%M')
+            f['total'] = float(f['total'])
+            if 'pagos' in f:
+                for p in f['pagos']:
+                    if isinstance(p.get('monto'), Decimal):
+                        p['monto'] = float(p['monto'])
+        
+        return jsonify({
+            'success': True, 
+            'fecha': fecha, 
+            'facturas': facturas,
+            'total_facturas': len(facturas),
+            'total_general': sum(float(f['total']) for f in facturas)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/facturas/resumen-medios-pago', methods=['GET'])
+@login_required
+def resumen_medios_pago():
+    """Genera un resumen por medio de pago para una fecha específica"""
+    from datetime import datetime, date
+    import io
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    
+    fecha = request.args.get('fecha')
+    exportar_pdf = request.args.get('pdf') == '1'
+    empresa_id = session.get('empresa_id')
+    
+    if not fecha:
+        fecha = date.today().strftime('%Y-%m-%d')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Obtener todas las facturas del día
+        cursor.execute("""
+            SELECT f.id, f.total, f.metodo_pago
+            FROM facturas f
+            WHERE DATE(f.fecha_emision) = %s AND f.empresa_id = %s
+        """, (fecha, empresa_id))
+        facturas = cursor.fetchall()
+        
+        # Calcular resumen por medio de pago
+        resumen_medios = {}
+        total_general = 0
+        
+        for f in facturas:
+            # Obtener pagos detallados
+            cursor.execute("""
+                SELECT pf.monto, mp.nombre as medio_pago_nombre
+                FROM pagos_factura pf
+                LEFT JOIN medios_pago mp ON pf.medio_pago_id = mp.id
+                WHERE pf.factura_id = %s
+            """, (f['id'],))
+            pagos = cursor.fetchall()
+            
+            if pagos:
+                # Si hay pagos detallados, usar esos
+                for pago in pagos:
+                    medio = pago['medio_pago_nombre'] or 'Otro'
+                    monto = float(pago['monto'])
+                    if medio in resumen_medios:
+                        resumen_medios[medio] += monto
+                    else:
+                        resumen_medios[medio] = monto
+                    total_general += monto
+            else:
+                # Si no hay pagos detallados, usar el método general
+                medio = f['metodo_pago']
+                monto = float(f['total'])
+                if medio in resumen_medios:
+                    resumen_medios[medio] += monto
+                else:
+                    resumen_medios[medio] = monto
+                total_general += monto
+        
+        if exportar_pdf:
+            # Generar PDF del resumen
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            elements = []
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, spaceAfter=20)
+            subtitle_style = ParagraphStyle('CustomSubtitle', parent=styles['Heading2'], fontSize=12, spaceAfter=10)
+            
+            elements.append(Paragraph(f"Resumen por Medio de Pago - {fecha}", title_style))
+            elements.append(Paragraph(f"Reporte consolidado de pagos por método de pago", subtitle_style))
+            elements.append(Spacer(1, 20))
+            
+            # Tabla del resumen
+            data = [["Medio de Pago", "Total", "Porcentaje"]]
+            
+            # Ordenar por monto descendente
+            sorted_medios = sorted(resumen_medios.items(), key=lambda x: x[1], reverse=True)
+            
+            for medio, total in sorted_medios:
+                porcentaje = (total / total_general * 100) if total_general > 0 else 0
+                data.append([
+                    medio,
+                    f"${total:.2f}",
+                    f"{porcentaje:.1f}%"
+                ])
+            
+            # Agregar total general
+            data.append(["", "", ""])
+            data.append(["<b>TOTAL GENERAL</b>", f"<b>${total_general:.2f}</b>", "<b>100%</b>"])
+            
+            table = Table(data, colWidths=[300, 150, 100])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -3), 'LEFT'),  # Alinear medios de pago a la izquierda
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, -2), (-1, -1), colors.grey),
+                ('TEXTCOLOR', (0, -2), (-1, -1), colors.whitesmoke),
+                ('FONTNAME', (0, -2), (-1, -1), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -3), [colors.white, colors.lightgrey])
+            ]))
+            
+            elements.append(table)
+            
+            # Agregar estadísticas adicionales
+            elements.append(Spacer(1, 20))
+            elements.append(Paragraph("Estadísticas Adicionales", subtitle_style))
+            
+            stats_data = [
+                ["Métrica", "Valor"],
+                ["Total de Facturas", str(len(facturas))],
+                ["Medios de Pago Utilizados", str(len(resumen_medios))],
+                ["Medio de Pago Principal", sorted_medios[0][0] if sorted_medios else "N/A"],
+                ["Promedio por Factura", f"${(total_general / len(facturas)):.2f}" if facturas else "$0.00"]
+            ]
+            
+            stats_table = Table(stats_data, colWidths=[250, 200])
+            stats_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+            ]))
+            elements.append(stats_table)
+            
+            doc.build(elements)
+            buffer.seek(0)
+            return send_file(buffer, as_attachment=True, download_name=f'resumen_medios_pago_{fecha}.pdf', mimetype='application/pdf')
+        
+        # Si no es PDF, devolver JSON
+        return jsonify({
+            'success': True,
+            'fecha': fecha,
+            'resumen': resumen_medios,
+            'total_general': total_general,
+            'total_facturas': len(facturas),
+            'medios_utilizados': len(resumen_medios)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/facturas/reporte-medios-pago-completo', methods=['GET'])
+@login_required
+def reporte_medios_pago_completo():
+    """Obtener reporte completo de medios de pago con todos los detalles"""
+    from datetime import datetime
+    import io
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    
+    fecha = request.args.get('fecha', datetime.now().strftime('%Y-%m-%d'))
+    exportar_pdf = request.args.get('pdf') == '1'
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Obtener facturas con pagos detallados
+        cursor.execute("""
+            SELECT 
+                f.id as factura_id,
+                f.numero_factura,
+                f.fecha_emision,
+                f.total as total_factura,
+                f.estatus,
+                f.metodo_pago as metodo_pago_general,
+                c.nombre as cliente_nombre,
+                c.cedula_rif as cliente_cedula,
+                c.telefono as cliente_telefono,
+                pf.medio_pago_id,
+                mp.nombre as medio_pago_nombre,
+                pf.monto,
+                pf.referencia,
+                pf.banco,
+                pf.observaciones
+            FROM facturas f
+            LEFT JOIN clientes c ON f.cliente_id = c.id
+            LEFT JOIN pagos_factura pf ON f.id = pf.factura_id
+            LEFT JOIN medios_pago mp ON pf.medio_pago_id = mp.id
+            WHERE DATE(f.fecha_emision) = %s 
+            AND f.empresa_id = %s
+            ORDER BY f.numero_factura, pf.id
+        """, (fecha, session.get('empresa_id')))
+        
+        resultados = cursor.fetchall()
+        
+        # Procesar los resultados
+        resumen_medios = {}
+        detalles_completos = []
+        facturas_procesadas = set()
+        
+        for row in resultados:
+            factura_id = row['factura_id']
+            
+            if row['medio_pago_id']:  # Si tiene pagos detallados
+                medio_pago = row['medio_pago_nombre'] or 'Otro'
+                monto = float(row['monto']) if row['monto'] else 0
+                
+                # Agregar al resumen
+                if medio_pago in resumen_medios:
+                    resumen_medios[medio_pago] += monto
+                else:
+                    resumen_medios[medio_pago] = monto
+                
+                # Agregar detalle completo
+                detalles_completos.append({
+                    'numero_factura': row['numero_factura'],
+                    'cliente_nombre': row['cliente_nombre'] or 'Cliente General',
+                    'cliente_cedula': row['cliente_cedula'],
+                    'cliente_telefono': row['cliente_telefono'],
+                    'medio_pago': medio_pago,
+                    'monto': monto,
+                    'referencia': row['referencia'],
+                    'banco': row['banco'],
+                    'observaciones': row['observaciones'],
+                    'fecha_emision': row['fecha_emision'],
+                    'fecha_pago': row['fecha_emision'],
+                    'estatus_factura': row['estatus'],
+                    'tipo_pago': 'Detallado'
+                })
+                
+                facturas_procesadas.add(factura_id)
+            else:
+                # Si no tiene pagos detallados y no se ha procesado
+                if factura_id not in facturas_procesadas:
+                    medio_pago = row.get('metodo_pago_general', 'No especificado')
+                    monto = float(row['total_factura']) if row['total_factura'] else 0
+                    
+                    if medio_pago in resumen_medios:
+                        resumen_medios[medio_pago] += monto
+                    else:
+                        resumen_medios[medio_pago] = monto
+                    
+                    detalles_completos.append({
+                        'numero_factura': row['numero_factura'],
+                        'cliente_nombre': row['cliente_nombre'] or 'Cliente General',
+                        'cliente_cedula': row['cliente_cedula'],
+                        'cliente_telefono': row['cliente_telefono'],
+                        'medio_pago': medio_pago,
+                        'monto': monto,
+                        'referencia': None,
+                        'banco': None,
+                        'observaciones': None,
+                        'fecha_emision': row['fecha_emision'],
+                        'fecha_pago': row['fecha_emision'],
+                        'estatus_factura': row['estatus'],
+                        'tipo_pago': 'General'
+                    })
+                    
+                    facturas_procesadas.add(factura_id)
+        
+        # Ordenar detalles por número de factura y medio de pago
+        detalles_completos.sort(key=lambda x: (x['numero_factura'], x['medio_pago']))
+        
+        if exportar_pdf:
+            # Generar PDF del reporte completo
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=landscape(letter))
+            elements = []
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, spaceAfter=20)
+            subtitle_style = ParagraphStyle('CustomSubtitle', parent=styles['Heading2'], fontSize=12, spaceAfter=10)
+            
+            elements.append(Paragraph(f"Reporte Completo de Medios de Pago - {fecha}", title_style))
+            elements.append(Paragraph(f"Detalle completo de todas las transacciones por método de pago", subtitle_style))
+            elements.append(Spacer(1, 20))
+            
+            # Resumen por medio de pago
+            if resumen_medios:
+                elements.append(Paragraph("Resumen por Medio de Pago", subtitle_style))
+                resumen_data = [["Medio de Pago", "Total", "Porcentaje"]]
+                
+                sorted_medios = sorted(resumen_medios.items(), key=lambda x: x[1], reverse=True)
+                total_general = sum(resumen_medios.values())
+                
+                for medio, total in sorted_medios:
+                    porcentaje = (total / total_general * 100) if total_general > 0 else 0
+                    resumen_data.append([
+                        medio,
+                        f"${total:.2f}",
+                        f"{porcentaje:.1f}%"
+                    ])
+                
+                resumen_data.append(["", "", ""])
+                resumen_data.append(["<b>TOTAL GENERAL</b>", f"<b>${total_general:.2f}</b>", "<b>100%</b>"])
+                
+                resumen_table = Table(resumen_data, colWidths=[200, 100, 80])
+                resumen_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('ALIGN', (0, 1), (0, -3), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BACKGROUND', (0, -2), (-1, -1), colors.grey),
+                    ('TEXTCOLOR', (0, -2), (-1, -1), colors.whitesmoke),
+                    ('FONTNAME', (0, -2), (-1, -1), 'Helvetica-Bold'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -3), [colors.white, colors.lightgrey])
+                ]))
+                elements.append(resumen_table)
+                elements.append(Spacer(1, 20))
+            
+            # Tabla de detalles completos
+            elements.append(Paragraph("Detalle Completo de Transacciones", subtitle_style))
+            
+            # Preparar datos para la tabla
+            detalles_data = [["N° Factura", "Cliente", "Cédula/RIF", "Medio de Pago", "Monto", "Referencia", "Banco", "Observaciones", "Fecha"]]
+            
+            for detalle in detalles_completos:
+                detalles_data.append([
+                    str(detalle['numero_factura']),
+                    detalle['cliente_nombre'],
+                    detalle['cliente_cedula'] or '-',
+                    detalle['medio_pago'],
+                    f"${detalle['monto']:.2f}",
+                    detalle['referencia'] or '-',
+                    detalle['banco'] or '-',
+                    detalle['observaciones'] or '-',
+                    str(detalle['fecha_emision'])[:10]
+                ])
+            
+            # Crear tabla con columnas ajustadas para landscape
+            detalles_table = Table(detalles_data, colWidths=[50, 120, 80, 100, 60, 80, 80, 100, 80])
+            detalles_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (2, -1), 'LEFT'),  # Cliente y Cédula alineados a la izquierda
+                ('ALIGN', (7, 1), (7, -1), 'LEFT'),  # Observaciones alineadas a la izquierda
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+            ]))
+            elements.append(detalles_table)
+            
+            # Estadísticas finales
+            elements.append(Spacer(1, 20))
+            elements.append(Paragraph("Estadísticas del Reporte", subtitle_style))
+            
+            stats_data = [
+                ["Métrica", "Valor"],
+                ["Total de Facturas", str(len(facturas_procesadas))],
+                ["Total de Transacciones", str(len(detalles_completos))],
+                ["Medios de Pago Utilizados", str(len(resumen_medios))],
+                ["Total General", f"${sum(resumen_medios.values()):.2f}"],
+                ["Promedio por Transacción", f"${(sum(resumen_medios.values()) / len(detalles_completos)):.2f}" if detalles_completos else "$0.00"]
+            ]
+            
+            stats_table = Table(stats_data, colWidths=[200, 150])
+            stats_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+            ]))
+            elements.append(stats_table)
+            
+            doc.build(elements)
+            buffer.seek(0)
+            return send_file(buffer, as_attachment=True, download_name=f'reporte_completo_medios_pago_{fecha}.pdf', mimetype='application/pdf')
+        
+        return jsonify({
+            'success': True,
+            'fecha': fecha,
+            'resumen_medios': resumen_medios,
+            'detalles_completos': detalles_completos,
+            'total_general': sum(resumen_medios.values()),
+            'total_facturas': len(facturas_procesadas),
+            'total_transacciones': len(detalles_completos)
+        })
+        
+    except Exception as e:
+        print(f"Error en reporte_medios_pago_completo: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/api/corregir-estructura-pagos-factura', methods=['POST'])
+@login_required
+@soporte_required
+def corregir_estructura_pagos_factura():
+    """Corregir la estructura de la tabla pagos_factura para que referencie facturas en lugar de comandas"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        print("🔧 Corrigiendo estructura de tabla pagos_factura...")
+        
+        # 1. Verificar si existe la restricción incorrecta
+        cursor.execute("""
+            SELECT CONSTRAINT_NAME 
+            FROM information_schema.KEY_COLUMN_USAGE 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'pagos_factura' 
+            AND COLUMN_NAME = 'factura_id' 
+            AND REFERENCED_TABLE_NAME = 'comandas'
+        """)
+        
+        constraint_exists = cursor.fetchone()
+        
+        if constraint_exists:
+            constraint_name = constraint_exists[0]
+            print(f"❌ Encontrada restricción incorrecta: {constraint_name}")
+            
+            # 2. Eliminar la restricción incorrecta
+            cursor.execute(f"ALTER TABLE pagos_factura DROP FOREIGN KEY {constraint_name}")
+            print(f"✅ Restricción {constraint_name} eliminada")
+            
+            # 3. Crear la restricción correcta
+            cursor.execute("""
+                ALTER TABLE pagos_factura 
+                ADD CONSTRAINT pagos_factura_ibfk_1 
+                FOREIGN KEY (factura_id) REFERENCES facturas(id) ON DELETE CASCADE
+            """)
+            print("✅ Nueva restricción correcta creada")
+        else:
+            print("✅ No se encontró restricción incorrecta")
+        
+        # 4. Verificar que la tabla facturas existe
+        cursor.execute("SHOW TABLES LIKE 'facturas'")
+        if not cursor.fetchone():
+            print("❌ La tabla 'facturas' no existe, creándola...")
+            
+            # Crear tabla facturas si no existe
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS facturas (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    comanda_id INT,
+                    numero_factura INT,
+                    cliente_id INT,
+                    total DECIMAL(10,2),
+                    metodo_pago VARCHAR(50),
+                    estatus VARCHAR(20),
+                    fecha_emision TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    usuario_id INT,
+                    empresa_id INT,
+                    INDEX idx_comanda_id (comanda_id),
+                    INDEX idx_empresa_id (empresa_id),
+                    INDEX idx_fecha_emision (fecha_emision)
+                )
+            """)
+            print("✅ Tabla facturas creada")
+        
+        # 5. Verificar que la tabla pagos_factura tiene la estructura correcta
+        cursor.execute("DESCRIBE pagos_factura")
+        columns = cursor.fetchall()
+        column_names = [col[0] for col in columns]
+        
+        if 'factura_id' not in column_names:
+            print("❌ La columna factura_id no existe en pagos_factura")
+            return jsonify({
+                'success': False,
+                'error': 'La tabla pagos_factura no tiene la estructura correcta'
+            }), 500
+        
+        print("✅ Estructura de pagos_factura verificada correctamente")
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Estructura de pagos_factura corregida exitosamente'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Error corrigiendo estructura: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

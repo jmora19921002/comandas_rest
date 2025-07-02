@@ -2,91 +2,189 @@
 {% block title %}Gestión de Mesas{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-8">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalMesas">Seleccionar Mesa</button>
+<!-- Header principal -->
+<div class="container-fluid mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="h3 mb-0 text-primary">
+                <i class="bi bi-table me-2"></i>Gestión de Mesas
+            </h1>
+            <p class="text-muted mb-0">Administre comandas y pagos de mesas</p>
         </div>
-        
-        <h2>Grupos</h2>
-        <div class="mb-3">
-            <!-- Organizamos los grupos en 4 columnas -->
-            <div class="row">
-                {% for grupo in grupos | batch((grupos|length / 4)|round(0, 'ceil')|int) %}
-                <div class="col-md-3">
-                    {% for g in grupo %}
-                    <button type="button" class="btn btn-outline-secondary mb-2 w-100" 
-                            data-bs-toggle="modal" data-bs-target="#modalGrupo{{ g.id }}">
-                        {{ g.nombre }}
-                    </button>
-                    {% endfor %}
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalMesas">
+                <i class="bi bi-table me-1"></i> Seleccionar Mesa
+            </button>
+            <div class="d-flex align-items-center">
+                <div class="input-group me-2" style="width: 200px;">
+                    <span class="input-group-text">
+                        <i class="bi bi-calendar3"></i>
+                    </span>
+                    <input type="date" id="fecha-cierre-dia" class="form-control form-control-sm">
                 </div>
-                {% endfor %}
+                <button id="btn-cierre-dia" class="btn btn-warning btn-sm">
+                    <i class="bi bi-file-earmark-text me-1"></i> Cierre del Día
+                </button>
+            </div>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger ms-2" title="Cerrar Sesión">
+                <i class="bi bi-box-arrow-right me-1"></i> Cerrar Sesión
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Botón de emergencia para limpiar modales (solo visible si hay problemas) -->
+<div id="emergency-cleanup" style="display: none;" class="alert alert-danger alert-dismissible fade show" role="alert">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <div>
+            <strong>¡Problema detectado!</strong> Si el modal no se cierra correctamente.
+        </div>
+    </div>
+    <div class="mt-2">
+        <button type="button" class="btn btn-danger btn-sm me-2" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise"></i> Recargar Página
+        </button>
+        <button type="button" class="btn btn-warning btn-sm" onclick="cerrarModalReporteCompleto()">
+            <i class="bi bi-x-circle"></i> Cerrar Reporte Completo
+        </button>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Sección de Grupos -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-collection me-2"></i>Grupos de Productos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if grupos %}
+                    <div class="row g-3">
+                        {% for grupo in grupos %}
+                        <div class="col-md-3 col-sm-6">
+                            <button type="button" class="btn btn-outline-primary w-100 h-100 py-3" 
+                                    data-bs-toggle="modal" data-bs-target="#modalGrupo{{ grupo.id }}">
+                                <i class="bi bi-tag d-block mb-2 fs-4"></i>
+                                <span class="fw-semibold">{{ grupo.nombre }}</span>
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-collection text-muted fs-1"></i>
+                        <p class="text-muted mt-2">No hay grupos disponibles</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Alertas de configuración -->
+            {% if not mesas %}
+            <div class="alert alert-info d-flex align-items-center" role="alert">
+                <i class="bi bi-info-circle me-2"></i>
+                <div>
+                    <strong>Configuración requerida:</strong> No hay mesas disponibles. Por favor, configure las mesas en el sistema.
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="alert alert-warning d-flex align-items-center" role="alert">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <div>
+                    <strong>Nota:</strong> Asegúrese de seleccionar una mesa antes de agregar items a la comanda.
+                </div>
             </div>
         </div>
         
-        {% if not mesas %}
-        <div class="alert alert-info" role="alert">
-            No hay mesas disponibles. Por favor, configure las mesas en el sistema.
-        </div>
-        {% endif %}
-        
-        <div class="alert alert-warning" role="alert">
-            <strong>Nota:</strong> Asegúrese de seleccionar una mesa antes de agregar items a la comanda.
-        </div>
-    </div>
-    
-    <div class="col-md-4">
-        <div class="sticky-top" style="top: 20px;">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h3 class="mb-0">Comanda - Mesa: <span id="mesa-seleccionada">Ninguna</span></h3>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label for="servicio-tipo" class="form-label">Tipo de Servicio</label>
-                        <select class="form-select" id="servicio-tipo">
-                            <option value="local">Comer en Local</option>
-                            <option value="delivery">Delivery</option>
-                        </select>
+        <div class="col-lg-4">
+            <div class="sticky-top" style="top: 20px;">
+                <!-- Tarjeta de Comanda -->
+                <div class="card shadow border-0">
+                    <div class="card-header bg-primary text-white">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-receipt me-2"></i>
+                            <h5 class="mb-0">Comanda - Mesa: <span id="mesa-seleccionada" class="badge bg-light text-dark">Ninguna</span></h5>
+                        </div>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table" id="tabla-comanda">
-                            <thead>
-                                <tr>
-                                    <th>Producto</th>
-                                    <th>Cantidad</th>
-                                    <th>Precio</th>
-                                    <th>Total</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody id="detalle-comanda">
-                                <!-- Aquí se agregarán los items dinámicamente -->
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <th colspan="3">Total:</th>
-                                    <th id="total-comanda">$0.00</th>
-                                    <th></th>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                    
-                    <div class="d-grid gap-2 mt-3">
-                        <button id="btn-imprimir" class="btn btn-info" disabled>
-                            <i class="bi bi-printer"></i> <span id="btn-imprimir-text">Imprimir Comanda</span>
-                        </button>
-                        <button id="btn-guardar" class="btn btn-success" disabled>
-                            <i class="bi bi-save"></i> <span id="btn-guardar-text">Guardar Comanda</span>
-                        </button>
-                        <button id="btn-totalizar" class="btn btn-warning" disabled>
-                            <i class="bi bi-cash"></i> <span id="btn-totalizar-text">Totalizar y Cerrar</span>
-                        </button>
-                        <button id="btn-cerrar" class="btn btn-danger" disabled>
-                            <i class="bi bi-x-circle"></i> Cerrar Comanda
-                        </button>
+                    <div class="card-body">
+                        <input type="hidden" id="comanda-id" value="">
+                        
+                        <!-- Tipo de Servicio -->
+                        <div class="mb-3">
+                            <label for="servicio-tipo" class="form-label fw-semibold">
+                                <i class="bi bi-shop me-1"></i>Tipo de Servicio
+                            </label>
+                            <select class="form-select" id="servicio-tipo">
+                                <option value="local">Comer en Local</option>
+                                <option value="delivery">Delivery</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Sección de Cliente -->
+                        <div class="mb-3">
+                            <label for="busqueda-cliente" class="form-label fw-semibold">
+                                <i class="bi bi-person me-1"></i>Cliente
+                            </label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="busqueda-cliente" placeholder="Buscar por nombre, cédula o RIF">
+                                <input type="hidden" id="cliente-id" name="cliente_id">
+                                <button class="btn btn-outline-secondary" type="button" id="btn-nuevo-cliente" title="Nuevo Cliente">
+                                    <i class="bi bi-person-plus"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" type="button" id="btn-limpiar-cliente" style="display: none;" title="Limpiar Cliente">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                            <div id="resultados-clientes" class="list-group mt-2" style="max-height: 200px; overflow-y: auto; display: none;"></div>
+                            <small class="text-muted" id="cliente-seleccionado-info"></small>
+                        </div>
+                        
+                        <!-- Tabla de Items -->
+                        <div class="table-responsive">
+                            <table class="table table-sm" id="tabla-comanda">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Cant.</th>
+                                        <th>Precio</th>
+                                        <th>Total</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detalle-comanda">
+                                    <!-- Aquí se agregarán los items dinámicamente -->
+                                </tbody>
+                                <tfoot class="table-light">
+                                    <tr class="fw-bold">
+                                        <th colspan="3">Total:</th>
+                                        <th id="total-comanda" class="text-primary">$0.00</th>
+                                        <th></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        
+                        <!-- Botones de Acción -->
+                        <div class="d-grid gap-2 mt-3">
+                            <button id="btn-imprimir" class="btn btn-info" disabled>
+                                <i class="bi bi-printer me-1"></i> <span id="btn-imprimir-text">Imprimir Comanda</span>
+                            </button>
+                            <button id="btn-guardar" class="btn btn-success" disabled>
+                                <i class="bi bi-save me-1"></i> <span id="btn-guardar-text">Guardar Comanda</span>
+                            </button>
+                            <button id="btn-totalizar" class="btn btn-warning" disabled>
+                                <i class="bi bi-cash-coin me-1"></i> <span id="btn-totalizar-text">Totalizar y Pagar</span>
+                            </button>
+                            <button id="btn-cerrar" class="btn btn-danger" disabled>
+                                <i class="bi bi-x-circle me-1"></i> Cerrar Comanda
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -98,21 +196,28 @@
 <div class="modal fade" id="modalMesas" tabindex="-1" aria-labelledby="modalMesasLabel">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalMesasLabel">Seleccionar Mesa</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalMesasLabel">
+                    <i class="bi bi-table me-2"></i>Seleccionar Mesa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="row" id="mesas-container">
+                <div class="row g-3" id="mesas-container">
                     {% for mesa in mesas %}
-                    <div class="col-md-3 mb-3">
-                        <div class="card mesa-card text-center 
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card mesa-card text-center h-100 border-0 shadow-sm
                             {% if mesa.estatus == 'libre' %}bg-success text-white
-                            {% elif mesa.estatus == 'ocupada' %}bg-warning{% endif %}"
+                            {% elif mesa.estatus == 'ocupada' %}bg-warning text-dark{% endif %}"
                             data-id="{{ mesa.id }}" data-nombre="{{ mesa.nombre }}" data-estatus="{{ mesa.estatus }}">
-                            <div class="card-body">
-                                <h5 class="card-title">{{ mesa.nombre }}</h5>
-                                <p class="card-text">{{ mesa.estatus|capitalize }}</p>
+                            <div class="card-body d-flex flex-column justify-content-center">
+                                <i class="bi bi-table fs-1 mb-2"></i>
+                                <h5 class="card-title mb-1">{{ mesa.nombre }}</h5>
+                                <p class="card-text mb-0">
+                                    <span class="badge {% if mesa.estatus == 'libre' %}bg-light text-success{% else %}bg-dark{% endif %}">
+                                        {{ mesa.estatus|capitalize }}
+                                    </span>
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -126,25 +231,30 @@
 <!-- Modales para cada grupo de productos -->
 {% for grupo in grupos %}
 <div class="modal fade" id="modalGrupo{{ grupo.id }}" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">{{ grupo.nombre }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-tag me-2"></i>{{ grupo.nombre }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="row">
+                <div class="row g-3">
                     {% for producto in productos if producto.grupo_id == grupo.id %}
-                    <div class="col-md-3 mb-3 producto-card" data-id="{{ producto.id }}" data-name="{{ producto.nombre }}" 
-                         data-precio="{{ producto.precio_venta }}" data-grupo="{{ producto.grupo_id }}">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h5 class="card-title">{{ producto.nombre }}</h5>
-                                <p class="card-text">${{ "%.2f"|format(producto.precio_venta) }}</p>
+                    <div class="col-lg-3 col-md-4 col-sm-6 producto-card" data-id="{{ producto.id }}" data-name="{{ producto.nombre }}" 
+                         data-precio="{{ producto.precio_venta }}" data-grupo="{{ producto.grupo_id }}" data-stock="{{ producto.cantidad_disponible or 1 }}">
+                        <div class="card h-100 border-0 shadow-sm">
+                            <div class="card-body text-center d-flex flex-column">
+                                <i class="bi bi-box-seam fs-1 text-primary mb-2"></i>
+                                <h6 class="card-title">{{ producto.nombre }}</h6>
+                                <p class="card-text fw-bold text-success">${{ "%.2f"|format(producto.precio_venta) }}</p>
                                 <div class="mb-2">
                                     <input type="text" class="form-control form-control-sm producto-nota" placeholder="Nota (opcional)">
                                 </div>
-                                <button class="btn btn-primary btn-sm agregar-producto">Agregar</button>
+                                <button class="btn btn-primary btn-sm agregar-producto mt-auto">
+                                    <i class="bi bi-plus-circle me-1"></i>Agregar
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -152,7 +262,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>Cerrar
+                </button>
             </div>
         </div>
     </div>
@@ -161,18 +273,280 @@
 
 <!-- Modal para la vista previa de impresión -->
 <div class="modal fade" id="modalImpresion" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Vista Previa de Impresión</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-printer me-2"></i>Vista Previa de Impresión
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="contenido-impresion">
                 <!-- Aquí se generará el contenido para imprimir -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-primary" onclick="iniciarImpresionTotalizacion()">Imprimir</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>Cerrar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="iniciarImpresionTotalizacion()">
+                    <i class="bi bi-printer me-1"></i>Imprimir
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para crear nuevo cliente -->
+<div class="modal fade" id="modalNuevoCliente" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="form-nuevo-cliente">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-plus me-2"></i>Nuevo Cliente
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="cliente-nombre" class="form-label fw-semibold">
+                                    <i class="bi bi-person me-1"></i>Nombre *
+                                </label>
+                                <input type="text" class="form-control" id="cliente-nombre" name="nombre" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="cliente-cedula" class="form-label fw-semibold">
+                                    <i class="bi bi-card-text me-1"></i>Cédula o RIF *
+                                </label>
+                                <input type="text" class="form-control" id="cliente-cedula" name="cedula_rif" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="cliente-telefono" class="form-label fw-semibold">
+                                    <i class="bi bi-telephone me-1"></i>Teléfono
+                                </label>
+                                <input type="text" class="form-control" id="cliente-telefono" name="telefono">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="cliente-correo" class="form-label fw-semibold">
+                                    <i class="bi bi-envelope me-1"></i>Correo Electrónico
+                                </label>
+                                <input type="email" class="form-control" id="cliente-correo" name="correo">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cliente-direccion" class="form-label fw-semibold">
+                            <i class="bi bi-geo-alt me-1"></i>Dirección
+                        </label>
+                        <textarea class="form-control" id="cliente-direccion" name="direccion" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status"></span>
+                        <i class="bi bi-check-circle me-1"></i>Guardar Cliente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para formulario de pago -->
+<div class="modal fade" id="modalPago" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="bi bi-cash-coin me-2"></i>Procesar Pago
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- Panel izquierdo: Resumen y formulario de pago -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-receipt me-2"></i>Resumen de Comanda
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <p class="mb-1"><strong>Mesa:</strong></p>
+                                        <p class="mb-1"><strong>Total:</strong></p>
+                                        <p class="mb-0"><strong>Cliente:</strong></p>
+                                    </div>
+                                    <div class="col-6">
+                                        <p class="mb-1"><span id="pago-mesa-nombre" class="badge bg-primary"></span></p>
+                                        <p class="mb-1"><span id="pago-total" class="fw-bold text-success"></span></p>
+                                        <p class="mb-0"><span id="pago-cliente-nombre" class="text-muted"></span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-plus-circle me-2"></i>Agregar Medio de Pago
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">Medio de Pago *</label>
+                                        <select class="form-select form-select-lg" id="nuevo-medio-pago" onchange="mostrarCampoBancoNuevo()">
+                                            <option value="">Seleccionar...</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">Monto *</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control form-control-lg" id="nuevo-monto" step="0.01" min="0" placeholder="0.00">
+                                            <button type="button" class="btn btn-outline-secondary" id="btn-monto-restante" title="Usar monto restante">
+                                                <i class="bi bi-cash-coin"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">Referencia</label>
+                                        <input type="text" class="form-control" id="nuevo-referencia" placeholder="Número de referencia">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">Banco</label>
+                                        <input type="text" class="form-control" id="nuevo-banco" placeholder="Nombre del banco" style="display: none;">
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-10">
+                                        <label class="form-label fw-semibold">Observaciones</label>
+                                        <input type="text" class="form-control" id="nuevo-observaciones" placeholder="Notas adicionales (opcional)">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="button" class="btn btn-primary btn-lg w-100" onclick="adicionarPago()">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="alert alert-info border-0 shadow-sm">
+                                    <div class="row text-center">
+                                        <div class="col-6">
+                                            <strong>Total Pagado:</strong><br>
+                                            <span id="total-pagado" class="fw-bold text-success">$0.00</span>
+                                        </div>
+                                        <div class="col-6">
+                                            <strong>Restante:</strong><br>
+                                            <span id="restante" class="fw-bold text-warning">$0.00</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="es-credito">
+                                    <label class="form-check-label" for="es-credito">
+                                        <i class="bi bi-shield-check me-1"></i>Marcar como Crédito (requiere autorización de administrador)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Panel derecho: Treeview de pagos -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-list-ul me-2"></i>Pagos Agregados
+                                </h6>
+                            </div>
+                            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                <div id="treeview-pagos">
+                                    <div class="text-muted text-center py-4">
+                                        <i class="bi bi-list-ul fs-1"></i>
+                                        <p class="mt-2">No hay pagos agregados</p>
+                                        <small>Agregue medios de pago desde el panel izquierdo</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-success" id="btn-procesar-pago" disabled>
+                    <i class="bi bi-check-circle me-1"></i> Procesar Pago
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para validación de admin (crédito) -->
+<div class="modal fade" id="modalValidacionAdmin" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="bi bi-shield-check me-2"></i>Validación de Administrador
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning border-0">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Para autorizar un crédito, debe ingresar las credenciales de un usuario administrador:
+                </div>
+                <div class="mb-3">
+                    <label for="admin-username" class="form-label fw-semibold">
+                        <i class="bi bi-person me-1"></i>Usuario
+                    </label>
+                    <input type="text" class="form-control" id="admin-username" required>
+                </div>
+                <div class="mb-3">
+                    <label for="admin-password" class="form-label fw-semibold">
+                        <i class="bi bi-lock me-1"></i>Contraseña
+                    </label>
+                    <input type="password" class="form-control" id="admin-password" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-warning" id="btn-validar-admin">
+                    <i class="bi bi-shield-check me-1"></i> Validar y Autorizar Crédito
+                </button>
             </div>
         </div>
     </div>
@@ -180,1305 +554,208 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-let comanda = {
-    mesa_id: null,
-    comanda_id: null,
-    items: [],
-    total: 0,
-    servicio: 'local'
-};
+<script src="{{ url_for('static', filename='js/mesas.js') }}"></script>
+{% endblock %}
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Delegación de eventos para los botones de mesas
-    document.getElementById('mesas-container').addEventListener('click', function(e) {
-        const card = e.target.closest('.mesa-card');
-        if (card) {
-            console.log('Mesa clickeada:', card.dataset);
-            const mesaId = card.dataset.id;
-            const mesaNombre = card.dataset.nombre;
-            const mesaEstatus = card.dataset.estatus;
-            seleccionarMesa(mesaId, mesaNombre, mesaEstatus);
-        }
-    });
-
-    // Mostrar modal de mesas al cargar
-    const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-    modalMesas.show();
-
-    // Eventos para los botones de grupos
-    document.querySelectorAll('.grupo-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.grupo-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            
-            const grupoId = this.dataset.grupo;
-            filtrarItemsPorGrupo(grupoId);
-        });
-    });
-
-    // Eventos para agregar productos desde los modales de grupos
-    document.querySelectorAll('.modal').forEach(modal => {
-        modal.addEventListener('click', function(e) {
-            if (e.target.classList.contains('agregar-producto')) {
-                if (!comanda.mesa_id) {
-                    alert('Por favor seleccione una mesa primero');
-                    const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-                    modalMesas.show();
-                    return;
-                }
-                
-                const card = e.target.closest('.producto-card');
-                if (card) {
-                    const productoId = parseInt(card.dataset.id);
-                    const nombre = card.dataset.name;
-                    const precio = parseFloat(card.dataset.precio);
-                    const grupoId = card.dataset.grupo;
-                    
-                    console.log('Datos del producto:', { productoId, nombre, precio, grupoId }); // Debug
-                    
-                    if (!productoId || !nombre || isNaN(precio)) {
-                        console.error('Datos inválidos del producto:', card.dataset);
-                        return;
-                    }
-                    
-                    agregarProducto(productoId, nombre, precio, grupoId);
-                    
-                    // Cerrar el modal después de agregar el producto
-                    const modalInstance = bootstrap.Modal.getInstance(this);
-                    if (modalInstance) {
-                        modalInstance.hide();
-                    }
-                }
-            }
-        });
-    });
-
-    // Botón guardar comanda
-    document.getElementById('btn-guardar').addEventListener('click', guardarComanda);
-    
-    // Botón cerrar comanda
-    document.getElementById('btn-cerrar').addEventListener('click', cerrarComanda);
-
-    // Botón imprimir comanda
-    document.getElementById('btn-imprimir').addEventListener('click', function() {
-        imprimirComanda(false);
-    });
-
-    // Botón totalizar comanda
-    document.getElementById('btn-totalizar').addEventListener('click', totalizarComanda);
-});
-
-function filtrarItemsPorGrupo(grupoId) {
-    const items = document.querySelectorAll('.item-card');
-    
-    items.forEach(item => {
-        if (grupoId === 'todos' || item.dataset.grupo === grupoId) {
-            item.style.display = 'block';
-        } else {
-            item.style.display = 'none';
-        }
-    });
-}
-
-function seleccionarMesa(mesaId, mesaNombre, mesaEstatus) {
-    console.log('Seleccionando mesa:', { mesaId, mesaNombre, mesaEstatus }); // Debug
-    
-    // Verificar si hay una comanda activa en otra mesa
-    if (comanda.mesa_id && comanda.mesa_id !== mesaId) {
-        if (confirm('Hay una comanda activa en otra mesa. ¿Desea guardar la comanda actual y cambiar a la nueva mesa?')) {
-            // Guardar la comanda actual antes de cambiar
-            guardarComandaYCambiarMesa(mesaId, mesaNombre, mesaEstatus);
-            return;
-        } else {
-            return;
-        }
+{% block extra_css %}
+<style>
+    /* Estilos generales */
+    body {
+        background-color: #f8f9fa;
     }
     
-    // Si la mesa está ocupada, cargar la comanda existente
-    if (mesaEstatus === 'ocupada') {
-        cargarComandaExistente(mesaId, mesaNombre);
-    } else {
-        // Si la mesa está libre, crear una nueva comanda
-        comanda = {
-            mesa_id: mesaId,
-            comanda_id: null,
-            items: [],
-            total: 0,
-            servicio: 'local'
-        };
-        
-        // Actualizar la interfaz
-        document.getElementById('mesa-seleccionada').textContent = mesaNombre;
-        document.getElementById('detalle-comanda').innerHTML = '';
-        document.getElementById('total-comanda').textContent = '$0.00';
-        document.getElementById('servicio-tipo').value = 'local';
-        
-        // Habilitar botones
-        document.getElementById('btn-guardar').disabled = false;
-        document.getElementById('btn-imprimir').disabled = false;
-        document.getElementById('btn-totalizar').disabled = false;
-        document.getElementById('btn-cerrar').disabled = false;
-        
-        // Actualizar el estado visual de la mesa
-        const mesaCard = document.querySelector(`.mesa-card[data-id="${mesaId}"]`);
-        if (mesaCard) {
-            mesaCard.classList.remove('bg-success', 'bg-warning', 'text-white');
-            mesaCard.classList.add('bg-warning');
-            mesaCard.querySelector('.card-text').textContent = 'Ocupada';
-            mesaCard.dataset.estatus = 'ocupada';
-        }
-        
-        // Actualizar el estado de todas las mesas
-        actualizarEstadoMesas();
+    .container-fluid {
+        padding: 0 1.5rem;
     }
     
-    // Cerrar el modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('modalMesas'));
-    if (modal) {
-        modal.hide();
+    /* Estilos para las tarjetas de mesa */
+    .mesa-card {
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border-radius: 0.75rem;
     }
-}
-
-// Nueva función para guardar la comanda actual y cambiar de mesa
-async function guardarComandaYCambiarMesa(nuevaMesaId, nuevaMesaNombre, nuevaMesaEstatus) {
-    try {
-        console.log('Guardando comanda actual antes de cambiar de mesa...'); // Debug
-        
-        // Verificar si hay items para guardar
-        if (!comanda.items || comanda.items.length === 0) {
-            console.log('No hay items para guardar, cambiando directamente de mesa'); // Debug
-            cambiarAMesa(nuevaMesaId, nuevaMesaNombre, nuevaMesaEstatus);
-            return;
+    
+    .mesa-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+    }
+    
+    /* Estilos para las tarjetas de producto */
+    .producto-card {
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .producto-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
+    }
+    
+    .producto-card .card {
+        border-radius: 0.75rem;
+    }
+    
+    /* Sticky positioning */
+    .sticky-top {
+        z-index: 1020;
+    }
+    
+    /* Estilos para el sistema de pagos */
+    .pago-item-tree {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border: 1px solid #dee2e6 !important;
+        border-radius: 0.5rem;
+        transition: all 0.3s ease;
+        margin-bottom: 0.5rem;
+    }
+    
+    .pago-item-tree:hover {
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+        border-color: #adb5bd !important;
+        transform: translateX(2px);
+    }
+    
+    .pago-item-tree .badge {
+        font-size: 0.9rem !important;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .pago-item-tree .small {
+        font-size: 0.8rem;
+    }
+    
+    .pago-item-tree .btn-outline-danger {
+        border-width: 1px;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+    }
+    
+    .pago-item-tree .btn-outline-danger:hover {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: white;
+    }
+    
+    /* Estilos para modales */
+    .modal-xl {
+        max-width: 1200px;
+    }
+    
+    .modal-header {
+        border-radius: 0.5rem 0.5rem 0 0;
+    }
+    
+    .form-control-lg, .form-select-lg {
+        font-size: 1.1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+    }
+    
+    .btn-lg {
+        padding: 0.75rem 1.5rem;
+        font-size: 1.1rem;
+        border-radius: 0.5rem;
+    }
+    
+    /* Estilos para alertas */
+    .alert {
+        border-radius: 0.5rem;
+        border: none;
+    }
+    
+    .alert-info {
+        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+    }
+    
+    /* Animaciones */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
         }
-        
-        await guardarComandaSinLimpiar();
-        console.log('Comanda guardada exitosamente con ID:', comanda.comanda_id); // Debug
-        
-        // Actualizar el estado de las mesas
-        await actualizarEstadoMesas();
-        
-        // Ahora cambiar a la nueva mesa
-        cambiarAMesa(nuevaMesaId, nuevaMesaNombre, nuevaMesaEstatus);
-        
-    } catch (error) {
-        console.error('Error al guardar la comanda:', error);
-        window.mostrarNotificacion('Error al guardar la comanda: ' + error.message, 'danger');
-        
-        // Si falla el guardado, preguntar si quiere cambiar de mesa de todas formas
-        if (confirm('Error al guardar la comanda. ¿Desea cambiar de mesa de todas formas? (Se perderán los datos no guardados)')) {
-            cambiarAMesa(nuevaMesaId, nuevaMesaNombre, nuevaMesaEstatus);
+        to {
+            opacity: 1;
+            transform: translateY(0);
         }
     }
-}
-
-// Función auxiliar para cambiar a una nueva mesa
-function cambiarAMesa(mesaId, mesaNombre, mesaEstatus) {
-    console.log('Cambiando a nueva mesa:', { mesaId, mesaNombre, mesaEstatus }); // Debug
     
-    // Si la mesa está ocupada, cargar la comanda existente
-    if (mesaEstatus === 'ocupada') {
-        cargarComandaExistente(mesaId, mesaNombre);
-    } else {
-        // Si la mesa está libre, crear una nueva comanda
-        comanda = {
-            mesa_id: mesaId,
-            comanda_id: null,
-            items: [],
-            total: 0,
-            servicio: 'local'
-        };
-        
-        // Actualizar la interfaz
-        document.getElementById('mesa-seleccionada').textContent = mesaNombre;
-        document.getElementById('detalle-comanda').innerHTML = '';
-        document.getElementById('total-comanda').textContent = '$0.00';
-        document.getElementById('servicio-tipo').value = 'local';
-        
-        // Habilitar botones
-        document.getElementById('btn-guardar').disabled = false;
-        document.getElementById('btn-imprimir').disabled = false;
-        document.getElementById('btn-totalizar').disabled = false;
-        document.getElementById('btn-cerrar').disabled = false;
-        
-        // Actualizar el estado visual de la mesa
-        const mesaCard = document.querySelector(`.mesa-card[data-id="${mesaId}"]`);
-        if (mesaCard) {
-            mesaCard.classList.remove('bg-success', 'bg-warning', 'text-white');
-            mesaCard.classList.add('bg-warning');
-            mesaCard.querySelector('.card-text').textContent = 'Ocupada';
-            mesaCard.dataset.estatus = 'ocupada';
+    .pago-item-tree {
+        animation: fadeInUp 0.3s ease-out;
+    }
+    
+    /* Estilos para campos requeridos */
+    .form-label .text-danger {
+        font-weight: bold;
+    }
+    
+    .form-control.border-warning {
+        border-width: 2px;
+        box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+    }
+    
+    /* Estilos para el estado de los totales */
+    .text-success {
+        font-weight: bold;
+    }
+    
+    .text-warning {
+        font-weight: bold;
+    }
+    
+    .text-danger {
+        font-weight: bold;
+    }
+    
+    /* Estilos para breadcrumb */
+    .breadcrumb {
+        background: transparent;
+        padding: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    .breadcrumb-item a {
+        color: #6c757d;
+        text-decoration: none;
+    }
+    
+    .breadcrumb-item a:hover {
+        color: #0d6efd;
+    }
+    
+    /* Estilos para botones de grupo */
+    .btn-outline-primary {
+        border-radius: 0.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-outline-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+    }
+    
+    /* Estilos para la tabla de comanda */
+    .table-sm th,
+    .table-sm td {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Estilos para badges */
+    .badge {
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .container-fluid {
+            padding: 0 1rem;
         }
         
-        // Actualizar el estado de todas las mesas
-        actualizarEstadoMesas();
-    }
-    
-    // Cerrar el modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('modalMesas'));
-    if (modal) {
-        modal.hide();
-    }
-}
-
-function cargarComandaExistente(mesaId, mesaNombre) {
-    console.log('Cargando comanda existente para la mesa:', mesaId);
-    
-    fetch(`/api/comanda?mesa_id=${mesaId}`)
-        .then(response => {
-            if (!response.ok) {
-                if (response.status === 404) {
-                    // Si no hay comanda, crear una nueva
-                    console.log('No se encontró comanda activa, creando nueva...');
-                    return { comanda: null, detalles: [] };
-                }
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Datos recibidos:', data); // Debug
-            
-            if (data.comanda) {
-                console.log('Comanda encontrada:', data.comanda); // Debug
-                console.log('Detalles encontrados:', data.detalles); // Debug
-                
-                // Asegurarse de que los detalles existan
-                const detalles = data.detalles || [];
-                
-                comanda = {
-                    mesa_id: mesaId,
-                    comanda_id: data.comanda.id,
-                    items: detalles.map(d => {
-                        console.log('Procesando detalle:', d); // Debug
-                        return {
-                            item_id: d.item_id,
-                            nombre: d.nombre || 'Producto sin nombre',
-                            precio: parseFloat(d.precio || 0),
-                            cantidad: parseInt(d.cantidad || 0),
-                            total: parseFloat(d.total || 0),
-                            grupo_codigo: d.grupo_codigo || '',
-                            impreso: d.impreso || '',
-                            estatus: d.estatus || 'pendiente',
-                            nota: d.nota || '',
-                            cantidad_impresa: parseInt(d.cantidad_impresa || 0)
-                        };
-                    }),
-                    total: parseFloat(data.comanda.total || 0),
-                    servicio: data.comanda.servicio || 'local'
-                };
-                
-                console.log('Comanda procesada:', comanda); // Debug
-                
-                // Actualizar la interfaz
-                actualizarVistaComanda();
-                document.getElementById('mesa-seleccionada').textContent = mesaNombre;
-                document.getElementById('servicio-tipo').value = comanda.servicio;
-                document.getElementById('btn-guardar').disabled = false;
-                document.getElementById('btn-imprimir').disabled = comanda.items.length === 0;
-                document.getElementById('btn-totalizar').disabled = comanda.items.length === 0;
-                document.getElementById('btn-cerrar').disabled = false;
-            } else {
-                console.warn('La mesa está ocupada pero no tiene comanda activa');
-                
-                // Crear una nueva comanda para esta mesa
-                comanda = {
-                    mesa_id: mesaId,
-                    comanda_id: null,
-                    items: [],
-                    total: 0,
-                    servicio: 'local'
-                };
-                
-                document.getElementById('mesa-seleccionada').textContent = mesaNombre;
-                document.getElementById('detalle-comanda').innerHTML = '';
-                document.getElementById('total-comanda').textContent = '$0.00';
-                document.getElementById('servicio-tipo').value = 'local';
-                document.getElementById('btn-guardar').disabled = false;
-                document.getElementById('btn-imprimir').disabled = true;
-                document.getElementById('btn-totalizar').disabled = true;
-                document.getElementById('btn-cerrar').disabled = true;
-            }
-            
-            // Cerrar el modal de mesas de manera segura
-            const modalMesas = document.getElementById('modalMesas');
-            if (modalMesas) {
-                const modalInstance = bootstrap.Modal.getInstance(modalMesas);
-                if (modalInstance) {
-                    modalInstance.hide();
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error al cargar la comanda:', error);
-            window.mostrarNotificacion('Error al cargar la comanda: ' + error.message, 'danger');
-            
-            // En caso de error, crear una nueva comanda
-            comanda = {
-                mesa_id: mesaId,
-                comanda_id: null,
-                items: [],
-                total: 0,
-                servicio: 'local'
-            };
-            
-            document.getElementById('mesa-seleccionada').textContent = mesaNombre;
-            document.getElementById('detalle-comanda').innerHTML = '';
-            document.getElementById('total-comanda').textContent = '$0.00';
-            document.getElementById('servicio-tipo').value = 'local';
-            document.getElementById('btn-guardar').disabled = false;
-            document.getElementById('btn-imprimir').disabled = true;
-            document.getElementById('btn-totalizar').disabled = true;
-            document.getElementById('btn-cerrar').disabled = true;
-        });
-}
-
-function cancelarComanda() {
-    if (!comanda || !comanda.comanda_id) {
-        // Si no hay comanda_id, simplemente limpiar la interfaz
-        comanda = {
-            mesa_id: null,
-            comanda_id: null,
-            items: [],
-            total: 0,
-            servicio: 'local'
-        };
-        
-        // Limpiar la interfaz
-        document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-        document.getElementById('detalle-comanda').innerHTML = '';
-        document.getElementById('total-comanda').textContent = '$0.00';
-        document.getElementById('servicio-tipo').value = 'local';
-        
-        // Deshabilitar botones
-        document.getElementById('btn-guardar').disabled = true;
-        document.getElementById('btn-imprimir').disabled = true;
-        document.getElementById('btn-totalizar').disabled = true;
-        document.getElementById('btn-cerrar').disabled = true;
-        
-        // Actualizar el estado de todas las mesas
-        actualizarEstadoMesas();
-        
-        return;
-    }
-    
-    fetch(`/api/comandas/${comanda.comanda_id}/cancelar`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Actualizar el estado visual de la mesa
-            const mesaCard = document.querySelector(`.mesa-card[data-id="${comanda.mesa_id}"]`);
-            if (mesaCard) {
-                mesaCard.classList.remove('bg-success', 'bg-warning');
-                mesaCard.classList.add('bg-success');
-                mesaCard.querySelector('.card-text').textContent = 'Libre';
-                mesaCard.dataset.estatus = 'libre';
-            }
-            
-            // Actualizar el estado de todas las mesas
-            actualizarEstadoMesas();
-            
-            window.mostrarNotificacion('Comanda cancelada correctamente', 'success');
-            
-            // Limpiar la comanda actual
-            comanda = {
-                mesa_id: null,
-                comanda_id: null,
-                items: [],
-                total: 0,
-                servicio: 'local'
-            };
-            
-            // Limpiar la interfaz
-            document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-            document.getElementById('detalle-comanda').innerHTML = '';
-            document.getElementById('total-comanda').textContent = '$0.00';
-            document.getElementById('servicio-tipo').value = 'local';
-            
-            // Deshabilitar botones
-            document.getElementById('btn-guardar').disabled = true;
-            document.getElementById('btn-imprimir').disabled = true;
-            document.getElementById('btn-totalizar').disabled = true;
-            document.getElementById('btn-cerrar').disabled = true;
-            
-            // Mostrar el modal de selección de mesa
-            const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-            modalMesas.show();
-        } else {
-            throw new Error(data.error || 'Error al cancelar la comanda');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        window.mostrarNotificacion('Error al cancelar comanda: ' + error.message, 'danger');
-    });
-}
-
-function editarCantidad(itemId, nuevaCantidad) {
-    if (nuevaCantidad < 1) {
-        eliminarItem(itemId);
-        return;
-    }
-    
-    const item = comanda.items.find(item => item.item_id === itemId);
-    if (item) {
-        item.cantidad = nuevaCantidad;
-        actualizarVistaComanda();
-    }
-}
-
-function eliminarItem(itemId) {
-    comanda.items = comanda.items.filter(item => item.item_id !== itemId);
-    actualizarVistaComanda();
-}
-
-function agregarProducto(productoId, nombre, precio, grupoId) {
-    console.log('Agregando producto:', { productoId, nombre, precio, grupoId }); // Debug
-    
-    if (!comanda) {
-        comanda = {
-            mesa_id: null,
-            comanda_id: null,
-            items: [],
-            total: 0,
-            servicio: 'local'
-        };
-    }
-    
-    // Validar datos
-    if (!productoId || !nombre || isNaN(precio)) {
-        console.error('Datos inválidos:', { productoId, nombre, precio, grupoId });
-        return;
-    }
-    
-    // Obtener la nota del input
-    const notaInput = document.querySelector(`.producto-card[data-id="${productoId}"] .producto-nota`);
-    const nota = notaInput ? notaInput.value.trim() : '';
-    
-    // Verificar si el producto ya existe en la comanda
-    const productoExistente = comanda.items.find(item => item.item_id === productoId);
-    
-    if (productoExistente) {
-        productoExistente.cantidad += 1;
-        if (nota) {
-            productoExistente.nota = nota;
-        }
-    } else {
-        const nuevoProducto = {
-            item_id: productoId,
-            nombre: nombre,
-            precio: parseFloat(precio),
-            cantidad: 1,
-            grupo_codigo: grupoId,
-            nota: nota
-        };
-        console.log('Nuevo producto:', nuevoProducto); // Debug
-        comanda.items.push(nuevoProducto);
-    }
-    
-    // Limpiar la nota después de agregar
-    if (notaInput) {
-        notaInput.value = '';
-    }
-    
-    actualizarVistaComanda();
-    
-    // Habilitar botones cuando hay productos
-    document.getElementById('btn-imprimir').disabled = false;
-    document.getElementById('btn-totalizar').disabled = false;
-    
-    // Cerrar el modal correctamente
-    if (grupoId) {
-        const modalId = `modalGrupo${grupoId}`;
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            const modalInstance = bootstrap.Modal.getInstance(modal);
-            if (modalInstance) {
-                modalInstance.hide();
-            }
+        .sticky-top {
+            position: relative !important;
+            top: 0 !important;
         }
     }
-}
-
-function actualizarVistaComanda() {
-    const detalleComanda = document.getElementById('detalle-comanda');
-    detalleComanda.innerHTML = '';
-    
-    if (!comanda || !comanda.items || comanda.items.length === 0) {
-        detalleComanda.innerHTML = '<tr><td colspan="5" class="text-center">No hay productos en la comanda</td></tr>';
-        document.getElementById('total-comanda').textContent = '$0.00';
-        // Deshabilitar botones cuando no hay productos
-        document.getElementById('btn-imprimir').disabled = true;
-        document.getElementById('btn-totalizar').disabled = true;
-        return;
-    }
-    
-    let total = 0;
-    comanda.items.forEach(item => {
-        console.log('Procesando producto:', item); // Debug
-        
-        const itemTotal = (parseFloat(item.precio) || 0) * (parseInt(item.cantidad) || 0);
-        total += itemTotal;
-        
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>
-                ${item.nombre || 'Producto sin nombre'}
-                ${item.nota ? `<br><small class="text-muted">Nota: ${item.nota}</small>` : ''}
-            </td>
-            <td class="text-center">
-                <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-secondary" onclick="editarCantidad(${item.item_id}, ${(parseInt(item.cantidad) || 0) - 1})">-</button>
-                    <span class="btn btn-outline-secondary disabled">${item.cantidad || 0}</span>
-                    <button class="btn btn-outline-secondary" onclick="editarCantidad(${item.item_id}, ${(parseInt(item.cantidad) || 0) + 1})">+</button>
-                </div>
-            </td>
-            <td class="text-end">$${(parseFloat(item.precio) || 0).toFixed(2)}</td>
-            <td class="text-end">$${itemTotal.toFixed(2)}</td>
-            <td>
-                <button class="btn btn-sm btn-danger" onclick="eliminarItem(${item.item_id})">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </td>
-        `;
-        detalleComanda.appendChild(tr);
-    });
-    
-    document.getElementById('total-comanda').textContent = `$${total.toFixed(2)}`;
-    
-    // Habilitar botones cuando hay productos
-    document.getElementById('btn-imprimir').disabled = false;
-    document.getElementById('btn-totalizar').disabled = false;
-}
-
-// Función para mostrar estado de carga en botones
-function mostrarCarga(buttonId, texto, isLoading = true) {
-    const button = document.getElementById(buttonId);
-    const textSpan = document.getElementById(buttonId + '-text');
-    
-    if (isLoading) {
-        button.disabled = true;
-        button.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${texto}`;
-    } else {
-        button.disabled = false;
-        if (textSpan) {
-            textSpan.textContent = texto;
-        }
-        // Restaurar el ícono original
-        if (buttonId === 'btn-imprimir') {
-            button.innerHTML = `<i class="bi bi-printer"></i> <span id="btn-imprimir-text">${texto}</span>`;
-        } else if (buttonId === 'btn-guardar') {
-            button.innerHTML = `<i class="bi bi-save"></i> <span id="btn-guardar-text">${texto}</span>`;
-        } else if (buttonId === 'btn-totalizar') {
-            button.innerHTML = `<i class="bi bi-cash"></i> <span id="btn-totalizar-text">${texto}</span>`;
-        }
-    }
-}
-
-// Función para guardar comanda sin limpiar la pantalla
-async function guardarComandaSinLimpiar() {
-    if (!comanda || !comanda.items || comanda.items.length === 0) {
-        throw new Error('No hay productos en la comanda para guardar.');
-    }
-
-    const servicio = document.getElementById('servicio-tipo').value;
-    
-    // Preparar los datos de la comanda
-    const comandaData = {
-        mesa_id: comanda.mesa_id,
-        comanda_id: comanda.comanda_id || null,
-        servicio: servicio,
-        items: comanda.items.map(item => ({
-            item_id: item.item_id,
-            cantidad: parseInt(item.cantidad) || 0,
-            precio: parseFloat(item.precio) || 0,
-            nota: item.nota || '',
-            grupo_codigo: item.grupo_codigo || '',
-            nombre: item.nombre || ''
-        }))
-    };
-
-    console.log('Enviando datos de comanda:', JSON.stringify(comandaData, null, 2)); // Debug detallado
-
-    const response = await fetch('/api/comanda', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(comandaData)
-    });
-
-    const data = await response.json();
-    
-    if (!response.ok) {
-        throw new Error(data.error || data.message || `Error del servidor: ${response.status}`);
-    }
-    
-    if (!data.success) {
-        throw new Error(data.error || 'Error al guardar la comanda');
-    }
-
-    // Actualizar el comanda_id si es una nueva comanda
-    if (!comanda.comanda_id) {
-        comanda.comanda_id = data.comanda_id;
-        console.log('Nueva comanda guardada con ID:', comanda.comanda_id); // Debug
-    } else {
-        console.log('Comanda existente actualizada con ID:', comanda.comanda_id); // Debug
-    }
-
-    return data;
-}
-
-// Función para guardar comanda (con limpieza de pantalla)
-async function guardarComanda() {
-    if (!comanda || !comanda.items || comanda.items.length === 0) {
-        alert('No hay productos en la comanda para guardar.');
-        return;
-    }
-
-    try {
-        mostrarCarga('btn-guardar', 'Guardando...', true);
-        
-        await guardarComandaSinLimpiar();
-        
-        window.mostrarNotificacion('Comanda guardada correctamente. Pantalla limpiada.', 'success');
-        
-        // Actualizar el estado visual de la mesa
-        const mesaCard = document.querySelector(`.mesa-card[data-id="${comanda.mesa_id}"]`);
-        if (mesaCard) {
-            mesaCard.classList.remove('bg-success', 'bg-warning');
-            mesaCard.classList.add('bg-warning');
-            mesaCard.querySelector('.card-text').textContent = 'Ocupada';
-            mesaCard.dataset.estatus = 'ocupada';
-        }
-        
-        // Limpiar la comanda actual
-        comanda = {
-            mesa_id: null,
-            comanda_id: null,
-            items: [],
-            total: 0,
-            servicio: 'local'
-        };
-        
-        // Limpiar la interfaz
-        document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-        document.getElementById('detalle-comanda').innerHTML = '';
-        document.getElementById('total-comanda').textContent = '$0.00';
-        document.getElementById('servicio-tipo').value = 'local';
-        
-        // Deshabilitar botones
-        document.getElementById('btn-guardar').disabled = true;
-        document.getElementById('btn-imprimir').disabled = true;
-        document.getElementById('btn-totalizar').disabled = true;
-        document.getElementById('btn-cerrar').disabled = true;
-        
-        // Mostrar el modal de selección de mesa
-        const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-        modalMesas.show();
-    } catch (error) {
-        console.error('Error completo:', error);
-        console.error('Stack trace:', error.stack);
-        window.mostrarNotificacion('Error al guardar la comanda: ' + error.message, 'danger');
-    } finally {
-        mostrarCarga('btn-guardar', 'Guardar Comanda', false);
-    }
-}
-
-// Función para cerrar comanda
-function cerrarComanda() {
-    if (!confirm('¿Está seguro de cancelar esta comanda?')) {
-        return;
-    }
-    
-    if (!comanda || !comanda.comanda_id) {
-        window.mostrarNotificacion('No hay una comanda activa para cancelar', 'warning');
-        return;
-    }
-    
-    fetch(`/api/comandas/${comanda.comanda_id}/cancelar`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Actualizar el estado visual de la mesa
-            const mesaCard = document.querySelector(`.mesa-card[data-id="${comanda.mesa_id}"]`);
-            if (mesaCard) {
-                mesaCard.classList.remove('bg-success', 'bg-warning');
-                mesaCard.classList.add('bg-success');
-                mesaCard.querySelector('.card-text').textContent = 'Libre';
-                mesaCard.dataset.estatus = 'libre';
-            }
-            
-            // Actualizar el estado de todas las mesas
-            actualizarEstadoMesas();
-            
-            window.mostrarNotificacion('Comanda cancelada correctamente', 'success');
-            
-            // Limpiar la comanda actual
-            comanda = {
-                mesa_id: null,
-                comanda_id: null,
-                items: [],
-                total: 0,
-                servicio: 'local'
-            };
-            
-            // Limpiar la interfaz
-            document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-            document.getElementById('detalle-comanda').innerHTML = '';
-            document.getElementById('total-comanda').textContent = '$0.00';
-            document.getElementById('servicio-tipo').value = 'local';
-            
-            // Deshabilitar botones
-            document.getElementById('btn-guardar').disabled = true;
-            document.getElementById('btn-imprimir').disabled = true;
-            document.getElementById('btn-totalizar').disabled = true;
-            document.getElementById('btn-cerrar').disabled = true;
-            
-            // Mostrar el modal de selección de mesa
-            const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-            modalMesas.show();
-        } else {
-            throw new Error(data.error || 'Error al cancelar la comanda');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        window.mostrarNotificacion('Error al cancelar comanda: ' + error.message, 'danger');
-    });
-}
-
-async function imprimirComanda(esTotalizacion = false) {
-    if (!comanda || !comanda.items || comanda.items.length === 0) {
-        alert('No hay productos en la comanda para imprimir.');
-        return;
-    }
-
-    try {
-        mostrarCarga('btn-imprimir', 'Guardando e imprimiendo...', true);
-        
-        // 1. PRIMERO: Guardar la comanda en la base de datos
-        console.log('Guardando comanda antes de imprimir...'); // Debug
-        
-        await guardarComandaSinLimpiar();
-        console.log('Comanda guardada exitosamente'); // Debug
-        
-        // 2. SEGUNDO: Obtener las asignaciones de impresoras
-        const responseMappings = await fetch('/api/printer_mappings');
-        const printerMappings = await responseMappings.json();
-
-        // Crear un mapa de grupo_id a impresora
-        const printerMap = {};
-        printerMappings.forEach(mapping => {
-            printerMap[mapping.grupo_id] = mapping.impresora;
-        });
-
-        // 3. TERCERO: Filtrar solo los productos que necesitan ser impresos
-        const itemsToPrint = comanda.items.filter(item => {
-            // Si es totalización, imprimir todo
-            if (esTotalizacion) return true;
-            
-            // Si no tiene cantidad impresa, imprimir todo
-            if (!item.cantidad_impresa) return true;
-            
-            // Si la cantidad actual es mayor que la cantidad impresa, imprimir la diferencia
-            return parseInt(item.cantidad) > parseInt(item.cantidad_impresa);
-        });
-
-        if (itemsToPrint.length === 0 && !esTotalizacion) {
-            alert('No hay nuevos productos para imprimir.');
-            return;
-        }
-
-        // 4. CUARTO: Agrupar los ítems por impresora (no por grupo)
-        const itemsGroupedByPrinter = {};
-        itemsToPrint.forEach(item => {
-            const grupoId = item.grupo_codigo || 'default';
-            const printerInfo = printerMap[grupoId];
-            
-            // Determinar la clave de la impresora
-            let printerKey = 'default';
-            if (printerInfo) {
-                printerKey = `${printerInfo.tipo}_${printerInfo.nombre || printerInfo.ip}`;
-            }
-            
-            if (!itemsGroupedByPrinter[printerKey]) {
-                itemsGroupedByPrinter[printerKey] = {
-                    items: [],
-                    printerInfo: printerInfo,
-                    grupos: new Set()
-                };
-            }
-            
-            // Calcular la cantidad a imprimir
-            let cantidadAImprimir = parseInt(item.cantidad);
-            if (!esTotalizacion && item.cantidad_impresa) {
-                cantidadAImprimir = parseInt(item.cantidad) - parseInt(item.cantidad_impresa);
-            }
-            
-            // Asegurarnos de que tenemos todos los datos necesarios
-            const itemData = {
-                nombre: item.nombre || item.item_nombre || item.descripcion || 'Producto sin nombre',
-                cantidad: cantidadAImprimir,
-                precio: parseFloat(item.precio) || 0.00,
-                item_id: item.item_id,
-                nota: item.nota || '',
-                cantidad_impresa: item.cantidad_impresa || 0,
-                grupo_codigo: grupoId
-            };
-            
-            console.log('Producto a imprimir:', itemData); // Debug
-            itemsGroupedByPrinter[printerKey].items.push(itemData);
-            itemsGroupedByPrinter[printerKey].grupos.add(grupoId);
-        });
-
-        // 5. QUINTO: Iterar sobre las impresoras y enviar los tickets
-        for (const printerKey in itemsGroupedByPrinter) {
-            const printerData = itemsGroupedByPrinter[printerKey];
-            const itemsToPrint = printerData.items;
-            const printerInfo = printerData.printerInfo;
-            const grupos = Array.from(printerData.grupos);
-
-            if (!printerInfo && printerKey !== 'default') {
-                console.warn(`Saltando impresión para la impresora: ${printerKey} ya que no tiene configuración válida.`);
-                continue;
-            }
-
-            // Obtener nombres de grupos para el ticket
-            const grupoNombres = grupos.map(grupoId => {
-                const grupoObj = printerMappings.find(m => m.grupo_id === grupoId);
-                return grupoObj ? grupoObj.grupo_nombre : (grupoId === 'default' ? 'Sin Grupo' : grupoId);
-            }).join(', ');
-
-            try {
-                // Obtener el tipo de servicio
-                const servicio = document.getElementById('servicio-tipo').value;
-                
-                // Llamar al backend para generar el contenido del ticket en texto plano
-                const generateTicketResponse = await fetch('/api/generar_ticket_plain_text', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        mesa_nombre: document.getElementById('mesa-seleccionada').textContent,
-                        items: itemsToPrint,
-                        grupo_nombre: grupoNombres,
-                        es_totalizacion: esTotalizacion,
-                        servicio: servicio
-                    })
-                });
-
-                if (!generateTicketResponse.ok) {
-                    throw new Error(`Error al generar ticket: ${generateTicketResponse.statusText}`);
-                }
-
-                const generateTicketData = await generateTicketResponse.json();
-                if (!generateTicketData.success) {
-                    throw new Error(generateTicketData.message || 'Error al generar el ticket');
-                }
-
-                const ticketContent = generateTicketData.ticket_content;
-
-                // Determinar qué impresora usar
-                let targetPrinterName = null;
-                let targetPrinterType = null;
-                let targetPrinterIp = null;
-                let targetPrinterPort = null;
-
-                if (printerInfo) {
-                    targetPrinterName = printerInfo.nombre;
-                    targetPrinterType = printerInfo.tipo;
-                    targetPrinterIp = printerInfo.ip;
-                    targetPrinterPort = printerInfo.puerto;
-                } else if (printerKey === 'default') {
-                    const defaultPrinters = await fetch('/api/windows_printers').then(res => res.json());
-                    if (defaultPrinters && defaultPrinters.length > 0) {
-                        targetPrinterName = defaultPrinters[0];
-                        targetPrinterType = 'windows';
-                    } else {
-                        console.error('No se encontró impresora para el grupo default');
-                        continue;
-                    }
-                }
-
-                const printPayload = {
-                    text_content: ticketContent,
-                    printer_type: targetPrinterType,
-                    items_impresos: itemsToPrint.map(item => ({
-                        item_id: item.item_id,
-                        cantidad: item.cantidad,
-                        cantidad_impresa: item.cantidad_impresa
-                    }))
-                };
-
-                if (targetPrinterType === 'windows') {
-                    printPayload.printer_name = targetPrinterName;
-                } else if (targetPrinterType === 'red') {
-                    printPayload.ip = targetPrinterIp;
-                    printPayload.puerto = targetPrinterPort;
-                }
-                
-                const printResponse = await fetch(`/api/print_ticket?comanda_id=${comanda.comanda_id}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(printPayload)
-                });
-
-                if (!printResponse.ok) {
-                    throw new Error(`Error al imprimir: ${printResponse.statusText}`);
-                }
-
-                const printData = await printResponse.json();
-                if (!printData.success) {
-                    throw new Error(printData.message || 'Error al imprimir el ticket');
-                }
-
-                // Marcar los productos como impresos en la interfaz
-                itemsToPrint.forEach(item => {
-                    const originalItem = comanda.items.find(i => i.item_id === item.item_id);
-                    if (originalItem) {
-                        originalItem.impreso = new Date().toISOString();
-                        originalItem.estatus = 'impreso';
-                        originalItem.cantidad_impresa = parseInt(originalItem.cantidad);
-                    }
-                });
-
-                // Mostrar notificación de éxito para cada impresora
-                const printerDisplayName = printerInfo ? printerInfo.nombre : 'Impresora predeterminada';
-                window.mostrarNotificacion(`Ticket impreso en ${printerDisplayName} (${grupoNombres})`, 'success');
-
-            } catch (error) {
-                console.error(`Error al procesar la impresora ${printerKey}:`, error);
-                const printerDisplayName = printerInfo ? printerInfo.nombre : 'Impresora predeterminada';
-                window.mostrarNotificacion(`Error al imprimir en ${printerDisplayName}: ${error.message}`, 'danger');
-            }
-        }
-
-        // Actualizar la vista después de imprimir
-        actualizarVistaComanda();
-        
-        // Actualizar el estado de las mesas
-        await actualizarEstadoMesas();
-
-        // Si es totalización, proceder a cerrar comanda
-        if (esTotalizacion) {
-            try {
-                const response = await fetch('/api/comandas/' + comanda.comanda_id + '/pagar', {
-                    method: 'PUT'
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    // Limpiar la comanda actual
-                    comanda = {
-                        mesa_id: null,
-                        comanda_id: null,
-                        items: [],
-                        total: 0,
-                        servicio: 'local'
-                    };
-                    
-                    // Limpiar la interfaz
-                    document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-                    document.getElementById('detalle-comanda').innerHTML = '';
-                    document.getElementById('total-comanda').textContent = '$0.00';
-                    document.getElementById('servicio-tipo').value = 'local';
-                    
-                    // Deshabilitar botones
-                    document.getElementById('btn-guardar').disabled = true;
-                    document.getElementById('btn-imprimir').disabled = true;
-                    document.getElementById('btn-totalizar').disabled = true;
-                    document.getElementById('btn-cerrar').disabled = true;
-                    
-                    // Mostrar el modal de selección de mesa
-                    const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-                    modalMesas.show();
-                } else {
-                    throw new Error(data.error || 'Error desconocido al cerrar la comanda');
-                }
-            } catch (error) {
-                console.error('Error al cerrar comanda:', error);
-                window.mostrarNotificacion('Error al cerrar comanda: ' + error.message, 'danger');
-            }
-        } else {
-            // Si no es totalización, limpiar la pantalla después de imprimir exitosamente
-            console.log('Impresión completada, limpiando pantalla...'); // Debug
-            
-            // Limpiar la comanda actual
-            comanda = {
-                mesa_id: null,
-                comanda_id: null,
-                items: [],
-                total: 0,
-                servicio: 'local'
-            };
-            
-            // Limpiar la interfaz
-            document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-            document.getElementById('detalle-comanda').innerHTML = '';
-            document.getElementById('total-comanda').textContent = '$0.00';
-            document.getElementById('servicio-tipo').value = 'local';
-            
-            // Deshabilitar botones
-            document.getElementById('btn-guardar').disabled = true;
-            document.getElementById('btn-imprimir').disabled = true;
-            document.getElementById('btn-totalizar').disabled = true;
-            document.getElementById('btn-cerrar').disabled = true;
-            
-            // Mostrar notificación de éxito
-            window.mostrarNotificacion('Comanda impresa y guardada correctamente. Pantalla limpiada.', 'success');
-            
-            // Actualizar el estado de las mesas para reflejar que la mesa sigue ocupada
-            await actualizarEstadoMesas();
-            
-            // Mostrar el modal de selección de mesa para continuar con otra comanda
-            const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-            modalMesas.show();
-        }
-
-    } catch (error) {
-        console.error('Error general en la impresión:', error);
-        window.mostrarNotificacion('Error al imprimir: ' + error.message, 'danger');
-    } finally {
-        mostrarCarga('btn-imprimir', 'Imprimir Comanda', false);
-    }
-}
-
-async function totalizarComanda() {
-    if (!comanda || !comanda.items || comanda.items.length === 0) {
-        alert('No hay productos en la comanda para totalizar.');
-        return;
-    }
-
-    if (confirm('¿Está seguro de totalizar y cerrar la comanda?')) {
-        try {
-            mostrarCarga('btn-totalizar', 'Procesando...', true);
-            
-            // 1. PRIMERO: Guardar la comanda si no tiene comanda_id
-            if (!comanda.comanda_id) {
-                console.log('Guardando comanda antes de totalizar...'); // Debug
-                await guardarComandaSinLimpiar();
-                console.log('Comanda guardada exitosamente'); // Debug
-            }
-
-            // 2. SEGUNDO: Obtener la impresora predeterminada de Windows
-            const responsePrinters = await fetch('/api/windows_printers');
-            const printers = await responsePrinters.json();
-            
-            if (!printers || printers.length === 0) {
-                alert('No se encontraron impresoras de Windows configuradas.');
-                return;
-            }
-            
-            const defaultPrinter = printers[0]; // Usar la primera impresora como predeterminada
-            
-            // 3. TERCERO: Generar el contenido del ticket
-            const generateTicketResponse = await fetch('/api/generar_ticket_plain_text', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    mesa_nombre: document.getElementById('mesa-seleccionada').textContent,
-                    items: comanda.items.map(item => ({ 
-                        nombre: item.nombre, 
-                        cantidad: item.cantidad, 
-                        precio: item.precio 
-                    })),
-                    es_totalizacion: true
-                })
-            });
-            
-            const generateTicketData = await generateTicketResponse.json();
-            if (!generateTicketData.success) {
-                throw new Error(generateTicketData.message || 'Error al generar el ticket');
-            }
-
-            // 4. CUARTO: Imprimir el ticket
-            const printResponse = await fetch('/api/print_ticket', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text_content: generateTicketData.ticket_content,
-                    printer_type: 'windows',
-                    printer_name: defaultPrinter
-                })
-            });
-            
-            const printData = await printResponse.json();
-            if (!printData.success) {
-                throw new Error(printData.message || 'Error al imprimir el ticket');
-            }
-
-            // 5. QUINTO: Marcar la comanda como pagada
-            const response = await fetch(`/api/comandas/${comanda.comanda_id}/pagar`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                }
-            });
-            
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error || data.message || `Error del servidor: ${response.status}`);
-            }
-            
-            if (data.success) {
-                // Actualizar el estado visual de la mesa
-                const mesaCard = document.querySelector(`.mesa-card[data-id="${comanda.mesa_id}"]`);
-                if (mesaCard) {
-                    mesaCard.classList.remove('bg-success', 'bg-warning');
-                    mesaCard.classList.add('bg-success');
-                    mesaCard.querySelector('.card-text').textContent = 'Libre';
-                    mesaCard.dataset.estatus = 'libre';
-                }
-                
-                // Actualizar el estado de todas las mesas
-                await actualizarEstadoMesas();
-                
-                window.mostrarNotificacion('Comanda totalizada y cerrada correctamente. Pantalla limpiada.', 'success');
-                
-                // Limpiar la comanda actual
-                comanda = {
-                    mesa_id: null,
-                    comanda_id: null,
-                    items: [],
-                    total: 0,
-                    servicio: 'local'
-                };
-                
-                // Limpiar la interfaz
-                document.getElementById('mesa-seleccionada').textContent = 'Ninguna';
-                document.getElementById('detalle-comanda').innerHTML = '';
-                document.getElementById('total-comanda').textContent = '$0.00';
-                document.getElementById('servicio-tipo').value = 'local';
-                
-                // Deshabilitar botones
-                document.getElementById('btn-guardar').disabled = true;
-                document.getElementById('btn-imprimir').disabled = true;
-                document.getElementById('btn-totalizar').disabled = true;
-                document.getElementById('btn-cerrar').disabled = true;
-                
-                // Mostrar el modal de selección de mesa
-                const modalMesas = new bootstrap.Modal(document.getElementById('modalMesas'));
-                modalMesas.show();
-            } else {
-                throw new Error(data.error || 'Error desconocido al cerrar la comanda');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            window.mostrarNotificacion('Error al totalizar la comanda: ' + error.message, 'danger');
-        } finally {
-            mostrarCarga('btn-totalizar', 'Totalizar y Cerrar', false);
-        }
-    }
-}
-
-// Función para mostrar el modal de productos
-function mostrarModalProductos(grupoId) {
-    console.log('Mostrando modal para grupo:', grupoId); // Debug
-    
-    const modalId = `modalGrupo${grupoId}`;
-    const modal = document.getElementById(modalId);
-    
-    if (!modal) {
-        console.error(`Modal no encontrado: ${modalId}`);
-        return;
-    }
-    
-    // Configurar el modal antes de mostrarlo
-    modal.setAttribute('aria-hidden', 'false');
-    modal.setAttribute('inert', 'false');
-    
-    const modalInstance = new bootstrap.Modal(modal);
-    modalInstance.show();
-    
-    // Agregar evento para manejar el cierre del modal
-    modal.addEventListener('hidden.bs.modal', function () {
-        // Restaurar atributos cuando el modal se cierra
-        modal.setAttribute('aria-hidden', 'true');
-        modal.setAttribute('inert', 'true');
-    });
-}
-
-// Función para cerrar el modal de productos
-function cerrarModalProductos(grupoId) {
-    const modalId = `modalGrupo${grupoId}`;
-    const modal = document.getElementById(modalId);
-    
-    if (!modal) {
-        console.error(`Modal no encontrado: ${modalId}`);
-        return;
-    }
-    
-    const modalInstance = bootstrap.Modal.getInstance(modal);
-    if (modalInstance) {
-        modalInstance.hide();
-    }
-}
-
-// Función para actualizar el estado de las mesas
-async function actualizarEstadoMesas() {
-    try {
-        console.log('Actualizando estado de mesas...'); // Debug
-        
-        // Hacer una petición al servidor para obtener el estado actual de las mesas
-        const response = await fetch('/mesas');
-        const html = await response.text();
-        
-        // Crear un DOM temporal para extraer la información de las mesas
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        // Obtener las mesas del HTML
-        const mesasActualizadas = doc.querySelectorAll('.mesa-card');
-        
-        // Actualizar cada mesa en el modal
-        mesasActualizadas.forEach(mesaActualizada => {
-            const mesaId = mesaActualizada.dataset.id;
-            const mesaEstatus = mesaActualizada.dataset.estatus;
-            const mesaNombre = mesaActualizada.dataset.nombre;
-            
-            // Buscar la mesa correspondiente en el modal actual
-            const mesaEnModal = document.querySelector(`.mesa-card[data-id="${mesaId}"]`);
-            if (mesaEnModal) {
-                // Actualizar el estatus
-                mesaEnModal.dataset.estatus = mesaEstatus;
-                
-                // Actualizar las clases CSS
-                mesaEnModal.classList.remove('bg-success', 'bg-warning', 'text-white');
-                if (mesaEstatus === 'libre') {
-                    mesaEnModal.classList.add('bg-success', 'text-white');
-                } else if (mesaEstatus === 'ocupada') {
-                    mesaEnModal.classList.add('bg-warning');
-                }
-                
-                // Actualizar el texto del estatus
-                const cardText = mesaEnModal.querySelector('.card-text');
-                if (cardText) {
-                    cardText.textContent = mesaEstatus.charAt(0).toUpperCase() + mesaEstatus.slice(1);
-                }
-                
-                console.log(`Mesa ${mesaNombre} actualizada a: ${mesaEstatus}`); // Debug
-            }
-        });
-        
-        console.log('Estado de mesas actualizado correctamente'); // Debug
-        
-    } catch (error) {
-        console.error('Error al actualizar estado de mesas:', error);
-    }
-}
-</script>
+</style>
 {% endblock %}
